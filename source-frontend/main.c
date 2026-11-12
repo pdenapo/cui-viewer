@@ -8,6 +8,7 @@
 #include <sys/stat.h>
 #include <unistd.h>
 #include <time.h>
+#include <ctype.h>
 #ifndef _WIN32
 #include <dirent.h>
 #endif
@@ -80,6 +81,9 @@ typedef struct {
     bool first_frame;
     bool show_help;
     bool show_settings;
+    char file_search[256];
+    int file_sort;
+    bool file_sort_desc;
 
     char settings_path[4096];
 } app_state;
@@ -273,6 +277,44 @@ static void viewer_collect_siblings(const char *path) {
 
 
 
+static int cmp_file_entry(const void *a, const void *b) {
+    const cui_file_entry *ea = a;
+    const cui_file_entry *eb = b;
+    if (ea->dir != eb->dir) return eb->dir - ea->dir; /* dirs first */
+    int res = 0;
+    if (S.file_sort == 1) {
+        if (ea->modified < eb->modified) res = -1;
+        else if (ea->modified > eb->modified) res = 1;
+    } else {
+        res = strcasecmp(ea->name, eb->name);
+    }
+    if (S.file_sort_desc) res = -res;
+    return res;
+}
+
+static int cui_filtered_list(void *user, const char *path, cui_file_entry *out, int cap, char *names, size_t names_cap, bool hidden) {
+    (void)user;
+    int n = cui_fs_list(NULL, path, out, cap, names, names_cap, hidden);
+    if (n < 0) return n;
+    int m = 0;
+    for (int i = 0; i < n; i++) {
+        if (S.file_search[0]) {
+            const char *hay = out[i].name;
+            const char *needle = S.file_search;
+            bool found = false;
+            for (const char *p = hay; *p && !found; p++) {
+                const char *a = p, *b = needle;
+                while (*a && *b && tolower((unsigned char)*a) == tolower((unsigned char)*b)) { a++; b++; }
+                if (*b == '\0') found = true;
+            }
+            if (!found) continue;
+        }
+        out[m++] = out[i];
+    }
+    if (m > 1) qsort(out, (size_t)m, sizeof(cui_file_entry), cmp_file_entry);
+    return m;
+}
+
 static void slideshow_shuffle_list(void) {
     if (S.slideshow.count <= 1) return;
     for (int i = S.slideshow.count - 1; i > 0; i--) {
@@ -318,6 +360,9 @@ static void slideshow_advance(cui_ctx *ui, int delta) {
     open_image(ui, S.slideshow.paths[ni]);
     S.slideshow.last_time = now_seconds();
 }
+
+static int cmp_file_entry(const void *a, const void *b);
+static int cui_filtered_list(void *user, const char *path, cui_file_entry *out, int cap, char *names, size_t names_cap, bool hidden);
 
 static void frame(cui_ctx *ui, void *user) {
     (void)user;
@@ -407,6 +452,18 @@ static void frame(cui_ctx *ui, void *user) {
     if (S.view == VIEW_BROWSER) {
         cui_column(ui, .width = CUI_FILL, .height = CUI_FILL, .gap = 8) {
             cui_row(ui, .gap = 8, .align = CUI_ALIGN_CENTER) {
+                cui_box(ui, .width = CUI_FILL) {
+                    cui_search(ui, "file_search", S.file_search, sizeof S.file_search, .placeholder = "Search files...");
+                }
+                cui_menu(ui, "Sort", .icon = CUI_ICON_ARROW_DOWN) {
+                    if (cui_menu_item(ui, "Name", .checked = S.file_sort == 0)) S.file_sort = 0;
+                    if (cui_menu_item(ui, "Date modified", .checked = S.file_sort == 1)) S.file_sort = 1;
+                }
+                if (cui_icon_button(ui, S.file_sort_desc ? CUI_ICON_ARROW_DOWN : CUI_ICON_ARROW_UP, .tooltip = "Toggle sort order")) {
+                    S.file_sort_desc = !S.file_sort_desc;
+                }
+            }
+            cui_row(ui, .gap = 8, .align = CUI_ALIGN_CENTER) {
                 if (cui_button(ui, "Slideshow", .icon = CUI_ICON_PLAY)) {
                     S.slideshow.recursive = false;
                     S.slideshow.shuffle = false;
@@ -429,6 +486,7 @@ static void frame(cui_ctx *ui, void *user) {
             cui_file_browser_result r = cui_file_browser(ui, "browser",
                 S.browser.current_dir, sizeof S.browser.current_dir,
                 .filter = "*.png;*.jpg;*.jpeg",
+                .list = cui_filtered_list,
                 .height = CUI_FILL);
 
             if (r.navigated) {
