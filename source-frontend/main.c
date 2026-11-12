@@ -140,6 +140,8 @@ static bool is_image_path(const char *path) {
     return false;
 }
 
+static void viewer_collect_siblings(const char *path);
+
 static void open_image(cui_ctx *ui, const char *path) {
     if (S.viewer.texture) {
         cui_image_destroy(ui, S.viewer.texture);
@@ -159,13 +161,16 @@ static void open_image(cui_ctx *ui, const char *path) {
     S.viewer.view.cx = (float)w * 0.5f;
     S.viewer.view.cy = (float)h * 0.5f;
     S.view = VIEW_VIEWER;
+    if (!S.slideshow.active) viewer_collect_siblings(path);
 }
 
+static void slideshow_free(void);
 static void close_image(cui_ctx *ui) {
     if (S.viewer.texture) {
         cui_image_destroy(ui, S.viewer.texture);
         S.viewer.texture = 0;
     }
+    if (!S.slideshow.active) slideshow_free();
     S.view = VIEW_BROWSER;
 }
 
@@ -233,6 +238,41 @@ static void collect_images(const char *dir, bool recursive) {
 #endif
 }
 
+static void viewer_collect_siblings(const char *path) {
+    if (S.slideshow.active) return;
+    char path_copy[4096];
+    snprintf(path_copy, sizeof path_copy, "%s", path ? path : "");
+    char dir[4096];
+    snprintf(dir, sizeof dir, "%s", path_copy);
+    char *slash = strrchr(dir, '/');
+    if (slash) *slash = '\0';
+    else snprintf(dir, sizeof dir, ".");
+    slideshow_free();
+    collect_images(dir, false);
+    if (S.slideshow.count > 0) {
+        qsort(S.slideshow.paths, (size_t)S.slideshow.count, sizeof(char *), cmp_str);
+        int idx = -1;
+        for (int i = 0; i < S.slideshow.count; i++) {
+            if (strcmp(S.slideshow.paths[i], path_copy) == 0) { idx = i; break; }
+        }
+        if (idx < 0) {
+            /* ensure current image is in list */
+            slideshow_add(path_copy);
+            /* re-sort not needed; append */
+            idx = S.slideshow.count - 1;
+        }
+        S.slideshow.index = idx;
+    } else {
+        slideshow_add(path_copy);
+        S.slideshow.index = 0;
+    }
+    S.slideshow.active = false;
+    S.slideshow.wrap = true;
+    S.slideshow.interval = S.slideshow.interval > 0 ? S.slideshow.interval : 5.0;
+}
+
+
+
 static void slideshow_shuffle_list(void) {
     if (S.slideshow.count <= 1) return;
     for (int i = S.slideshow.count - 1; i > 0; i--) {
@@ -264,7 +304,7 @@ static void slideshow_start(cui_ctx *ui) {
 }
 
 static void slideshow_advance(cui_ctx *ui, int delta) {
-    if (!S.slideshow.active || S.slideshow.count == 0) return;
+    if (S.slideshow.count == 0) return;
     int ni = S.slideshow.index + delta;
     if (S.slideshow.wrap) {
         ni %= S.slideshow.count;
@@ -327,6 +367,10 @@ static void frame(cui_ctx *ui, void *user) {
     } else if (S.view == VIEW_VIEWER) {
         if (cui_shortcut(ui, 0, CUI_KEY_ESCAPE) || cui_shortcut(ui, 0, CUI_KEY_BACKSPACE))
             close_image(ui);
+        if (!S.slideshow.active && S.slideshow.count > 1) {
+            if (cui_shortcut(ui, 0, CUI_KEY_RIGHT)) slideshow_advance(ui, 1);
+            if (cui_shortcut(ui, 0, CUI_KEY_LEFT)) slideshow_advance(ui, -1);
+        }
     }
 
     /* Top bar */
@@ -409,6 +453,28 @@ static void frame(cui_ctx *ui, void *user) {
                 if (cui_button(ui, msg(T_BACK), .icon = CUI_ICON_ARROW_LEFT)) {
                     close_image(ui);
                 }
+                if (S.slideshow.count > 1) {
+                    if (cui_button(ui, "Prev", .icon = CUI_ICON_ARROW_LEFT)) slideshow_advance(ui, -1);
+                    if (cui_button(ui, "Next", .icon = CUI_ICON_ARROW_RIGHT)) slideshow_advance(ui, 1);
+                }
+                if (!S.slideshow.active) {
+                    if (cui_button(ui, "Slideshow", .icon = CUI_ICON_PLAY)) {
+                        if (S.slideshow.count == 0) viewer_collect_siblings(S.viewer.path);
+                        S.slideshow.active = true;
+                        S.slideshow.last_time = now_seconds();
+                        save_settings();
+                    }
+                } else {
+                    if (cui_button(ui, S.slideshow.paused ? "Play" : "Pause", .icon = CUI_ICON_PLAY)) {
+                        S.slideshow.paused = !S.slideshow.paused;
+                        S.slideshow.last_time = now_seconds();
+                    }
+                    if (cui_button(ui, "Stop", .icon = CUI_ICON_SQUARE)) {
+                        S.slideshow.active = false;
+                        slideshow_free();
+                        if (S.viewer.path[0]) viewer_collect_siblings(S.viewer.path);
+                    }
+                }
                 cui_text(ui, S.viewer.path, .size = 12, .color = CUI_COLOR_TEXT_SECONDARY);
             }
             if (S.slideshow.active) {
@@ -419,6 +485,10 @@ static void frame(cui_ctx *ui, void *user) {
                     }
                     if (cui_button(ui, "Prev", .icon = CUI_ICON_ARROW_LEFT)) slideshow_advance(ui, -1);
                     if (cui_button(ui, "Next", .icon = CUI_ICON_ARROW_RIGHT)) slideshow_advance(ui, 1);
+                    if (cui_button(ui, "Stop", .icon = CUI_ICON_SQUARE)) {
+                        S.slideshow.active = false;
+                        slideshow_free();
+                    }
                     char buf[64];
                     snprintf(buf, sizeof buf, "%d / %d", S.slideshow.index + 1, S.slideshow.count);
                     cui_text(ui, buf, .size = 12);
