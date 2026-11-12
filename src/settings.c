@@ -114,6 +114,7 @@ void settings_defaults(app_settings *s) {
     s->thumbnails_quality = 75;
     s->thumbnails_show_directories = false;
     s->thumbnails_slow_update = false;
+    s->preview_enabled = true;
 }
 
 int settings_load(app_settings *s, const char *path) {
@@ -178,6 +179,7 @@ int settings_load(app_settings *s, const char *path) {
     parse_int(buf, "quality", &s->thumbnails_quality);
     parse_bool(buf, "show_directories", &s->thumbnails_show_directories);
     parse_bool(buf, "slow_update", &s->thumbnails_slow_update);
+    parse_bool(buf, "preview", &s->preview_enabled);
 
     if (s->thumbnails_location[0] == '\0') {
         snprintf(s->thumbnails_location, sizeof s->thumbnails_location, "per-directory");
@@ -241,7 +243,8 @@ int settings_save(const app_settings *s, const char *path) {
     fprintf(f, "    \"size\": %d,\n", s->thumbnails_size);
     fprintf(f, "    \"quality\": %d,\n", s->thumbnails_quality);
     fprintf(f, "    \"show_directories\": %s,\n", s->thumbnails_show_directories ? "true" : "false");
-    fprintf(f, "    \"slow_update\": %s\n", s->thumbnails_slow_update ? "true" : "false");
+    fprintf(f, "    \"slow_update\": %s,\n", s->thumbnails_slow_update ? "true" : "false");
+    fprintf(f, "    \"preview\": %s\n", s->preview_enabled ? "true" : "false");
     fprintf(f, "  }\n");
     fprintf(f, "}\n");
 

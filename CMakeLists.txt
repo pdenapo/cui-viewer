@@ -30,9 +30,11 @@ add_subdirectory(vendor/CUI)
 add_executable(cuiviewer
     source-frontend/main.c
     src/settings.c
+    src/thumbnails.c
 )
 target_include_directories(cuiviewer PRIVATE
     ${CMAKE_CURRENT_SOURCE_DIR}/include
+    ${CMAKE_CURRENT_SOURCE_DIR}/vendor/CUI/third_party
 )
 target_link_libraries(cuiviewer PRIVATE cui::cui)
 

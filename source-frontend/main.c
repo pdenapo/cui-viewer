@@ -14,6 +14,7 @@
 #endif
 
 #include "settings.h"
+#include "thumbnails.h"
 
 enum { VIEW_BROWSER = 0, VIEW_VIEWER };
 enum { LANG_EN = 0, LANG_DE, LANG_ES, LANG_FR, LANG_IT, LANG_PT, LANG_COUNT };
@@ -81,9 +82,17 @@ typedef struct {
     bool first_frame;
     bool show_help;
     bool show_settings;
+    bool show_delete_confirm;
+    char delete_path[4096];
+    cui_texture browser_preview;
+    char browser_preview_path[4096];
+    int browser_preview_w;
+    int browser_preview_h;
     char file_search[256];
     int file_sort;
     bool file_sort_desc;
+    char thumbnails_location[16];
+    bool preview_enabled;
 
     char settings_path[4096];
 } app_state;
@@ -108,7 +117,8 @@ static void save_settings(void) {
     st.slideshow_recursive = S.slideshow.recursive;
     st.slideshow_wrap = S.slideshow.wrap;
     st.thumbnails_size = 128;
-    snprintf(st.thumbnails_location, sizeof st.thumbnails_location, "per-directory");
+    snprintf(st.thumbnails_location, sizeof st.thumbnails_location, "%s", S.thumbnails_location[0] ? S.thumbnails_location : "per-directory");
+    st.preview_enabled = S.preview_enabled;
     settings_save(&st, S.settings_path);
 }
 
@@ -127,6 +137,8 @@ static void load_settings_into_state(void) {
     S.slideshow.shuffle = st.slideshow_shuffle;
     S.slideshow.recursive = st.slideshow_recursive;
     S.slideshow.wrap = st.slideshow_wrap;
+    snprintf(S.thumbnails_location, sizeof S.thumbnails_location, "%s", st.thumbnails_location[0] ? st.thumbnails_location : "per-directory");
+    S.preview_enabled = st.preview_enabled;
 }
 
 static bool is_image_path(const char *path) {
@@ -418,6 +430,21 @@ static void frame(cui_ctx *ui, void *user) {
         }
     }
 
+    if (S.view == VIEW_BROWSER && cui_shortcut(ui, 0, CUI_KEY_U)) {
+        /* Update thumbnails in current directory. */
+        slideshow_free();
+        collect_images(S.browser.current_dir, false);
+        int done = 0;
+        for (int i = 0; i < S.slideshow.count; i++) {
+            char thumb[4096];
+            if (thumbnail_ensure(S.slideshow.paths[i], 128, S.thumbnails_location, thumb, sizeof thumb)) done++;
+        }
+        slideshow_free();
+        char msgbuf[128];
+        snprintf(msgbuf, sizeof msgbuf, "Thumbnails updated: %d", done);
+        cui_toast(ui, msgbuf, .tone = CUI_TONE_SUCCESS);
+    }
+
     /* Top bar */
     cui_row(ui, .width = CUI_FILL, .height = CUI_PX(44), .align = CUI_ALIGN_CENTER, .pad = 12, .gap = 8) {
         cui_label(ui, msg(T_APP));
@@ -462,8 +489,44 @@ static void frame(cui_ctx *ui, void *user) {
                 if (cui_icon_button(ui, S.file_sort_desc ? CUI_ICON_ARROW_DOWN : CUI_ICON_ARROW_UP, .tooltip = "Toggle sort order")) {
                     S.file_sort_desc = !S.file_sort_desc;
                 }
+                cui_menu(ui, "Actions", .icon = CUI_ICON_ELLIPSIS) {
+                    if (cui_menu_item(ui, "Open folder in system")) {
+                        char target[4096];
+                        const char *sel = S.browser.selected_path[0] ? S.browser.selected_path : S.browser.current_dir;
+                        struct stat st;
+                        if (stat(sel, &st) == 0 && S_ISDIR(st.st_mode)) snprintf(target, sizeof target, "%s", sel);
+                        else {
+                            snprintf(target, sizeof target, "%s", sel);
+                            char *slash = strrchr(target, '/');
+                            if (slash) *slash = '\0';
+                            else snprintf(target, sizeof target, ".");
+                        }
+                        cui_app_open_url(target);
+                    }
+                    if (cui_menu_item(ui, "Delete")) {
+                        const char *sel = S.browser.selected_path[0] ? S.browser.selected_path : "";
+                        if (sel[0]) {
+                            snprintf(S.delete_path, sizeof S.delete_path, "%s", sel);
+                            S.show_delete_confirm = true;
+                        }
+                    }
+                    if (cui_menu_item(ui, "Slideshow here")) {
+                        S.slideshow.recursive = false;
+                        S.slideshow.shuffle = false;
+                        S.slideshow.interval = S.slideshow.interval > 0 ? S.slideshow.interval : 5.0;
+                        slideshow_start(ui);
+                    }
+                    if (cui_menu_item(ui, "Toggle theme")) {
+                        S.dark = !S.dark;
+                        cui_set_theme(ui, S.dark ? CUI_THEME_DARK : CUI_THEME_LIGHT);
+                        save_settings();
+                    }
+                    if (cui_menu_item(ui, "Update thumbnails (u)")) {
+                        /* handled by u key */
+                    }
+                }
             }
-            cui_row(ui, .gap = 8, .align = CUI_ALIGN_CENTER) {
+            cui_row(ui, .gap = 8, .align = CUI_ALIGN_CENTER, .width = CUI_FILL) {
                 if (cui_button(ui, "Slideshow", .icon = CUI_ICON_PLAY)) {
                     S.slideshow.recursive = false;
                     S.slideshow.shuffle = false;
@@ -483,26 +546,104 @@ static void frame(cui_ctx *ui, void *user) {
                     slideshow_start(ui);
                 }
             }
-            cui_file_browser_result r = cui_file_browser(ui, "browser",
-                S.browser.current_dir, sizeof S.browser.current_dir,
-                .filter = "*.png;*.jpg;*.jpeg",
-                .list = cui_filtered_list,
-                .height = CUI_FILL);
+            cui_row(ui, .gap = 12, .align = CUI_ALIGN_START, .width = CUI_FILL, .height = CUI_FILL) {
+                cui_column(ui, .width = CUI_FILL, .height = CUI_FILL, .gap = 8, .pad_bottom = 12) {
+                    cui_file_browser_result r = cui_file_browser(ui, "browser",
+                        S.browser.current_dir, sizeof S.browser.current_dir,
+                        .filter = "*.png;*.jpg;*.jpeg",
+                        .list = cui_filtered_list,
+                        .height = CUI_FILL);
 
-            if (r.navigated) {
-                save_settings();
-            }
-            if (r.picked) {
-                struct stat st;
-                if (stat(r.picked, &st) == 0 && S_ISDIR(st.st_mode)) {
-                    snprintf(S.browser.current_dir, sizeof S.browser.current_dir, "%s", r.picked);
-                    save_settings();
-                } else if (is_image_path(r.picked)) {
-                    open_image(ui, r.picked);
+                    cui_context_menu(ui, "browser_ctx") {
+                        if (cui_menu_item(ui, "Open")) { }
+                        if (cui_menu_item(ui, "Open folder in system")) {
+                            char target[4096];
+                            const char *sel = S.browser.selected_path[0] ? S.browser.selected_path : S.browser.current_dir;
+                            struct stat st;
+                            if (stat(sel, &st) == 0 && S_ISDIR(st.st_mode)) {
+                                snprintf(target, sizeof target, "%s", sel);
+                            } else {
+                                snprintf(target, sizeof target, "%s", sel);
+                                char *slash = strrchr(target, '/');
+                                if (slash) *slash = '\0';
+                                else snprintf(target, sizeof target, ".");
+                            }
+                            cui_app_open_url(target);
+                        }
+                        if (cui_menu_item(ui, "Delete")) {
+                            const char *sel = S.browser.selected_path[0] ? S.browser.selected_path : "";
+                            if (sel[0]) {
+                                snprintf(S.delete_path, sizeof S.delete_path, "%s", sel);
+                                S.show_delete_confirm = true;
+                            }
+                        }
+                        if (cui_menu_item(ui, "Slideshow here")) {
+                            S.slideshow.recursive = false;
+                            S.slideshow.shuffle = false;
+                            S.slideshow.interval = S.slideshow.interval > 0 ? S.slideshow.interval : 5.0;
+                            slideshow_start(ui);
+                        }
+                        if (cui_menu_item(ui, "Toggle theme")) {
+                            S.dark = !S.dark;
+                            cui_set_theme(ui, S.dark ? CUI_THEME_DARK : CUI_THEME_LIGHT);
+                            save_settings();
+                        }
+                    }
+
+                    if (r.selected) {
+                        snprintf(S.browser.selected_path, sizeof S.browser.selected_path, "%s", r.selected);
+                    }
+                    if (r.navigated) {
+                        save_settings();
+                        if (S.browser_preview) {
+                            cui_image_destroy(ui, S.browser_preview);
+                            S.browser_preview = 0;
+                        }
+                        S.browser_preview_path[0] = '\0';
+                    }
+                    if (r.picked) {
+                        struct stat st;
+                        if (stat(r.picked, &st) == 0 && S_ISDIR(st.st_mode)) {
+                            snprintf(S.browser.current_dir, sizeof S.browser.current_dir, "%s", r.picked);
+                            save_settings();
+                        } else if (is_image_path(r.picked)) {
+                            open_image(ui, r.picked);
+                        }
+                    }
+                    if (r.error) {
+                        cui_toast(ui, "Could not read directory", .tone = CUI_TONE_DANGER);
+                    }
+                    if (r.selected && is_image_path(r.selected)) {
+                        if (strcmp(S.browser_preview_path, r.selected) != 0) {
+                            if (S.browser_preview) {
+                                cui_image_destroy(ui, S.browser_preview);
+                                S.browser_preview = 0;
+                            }
+                            char thumb[4096];
+                            if (thumbnail_ensure(r.selected, 128,
+                                                 S.thumbnails_location, thumb, sizeof thumb)) {
+                                int w = 0, h = 0;
+                                cui_texture t = cui_image_load(ui, thumb, &w, &h);
+                                if (t) {
+                                    S.browser_preview = t;
+                                    S.browser_preview_w = w;
+                                    S.browser_preview_h = h;
+                                    snprintf(S.browser_preview_path, sizeof S.browser_preview_path, "%s", r.selected);
+                                }
+                            }
+                        }
+                    }
                 }
-            }
-            if (r.error) {
-                cui_toast(ui, "Could not read directory", .tone = CUI_TONE_DANGER);
+                if (S.preview_enabled && S.browser_preview) {
+                    cui_box(ui, .pad_right = 12) {
+                        cui_card(ui, .width = CUI_PX(220), .pad = 12) {
+                            cui_column(ui, .gap = 6) {
+                                cui_text(ui, "Preview:", .size = 12, .color = CUI_COLOR_TEXT_SECONDARY);
+                                cui_image(ui, S.browser_preview, .height = CUI_PX(120));
+                            }
+                        }
+                    }
+                }
             }
         }
     } else {
@@ -615,6 +756,10 @@ static void frame(cui_ctx *ui, void *user) {
             if (cui_checkbox(ui, "checkerboard", &S.viewer.checkerboard)) save_settings();
         }
         cui_row(ui, .gap = 8, .align = CUI_ALIGN_CENTER) {
+            cui_text(ui, "Show preview", .size = 13);
+            if (cui_checkbox(ui, "preview", &S.preview_enabled)) save_settings();
+        }
+        cui_row(ui, .gap = 8, .align = CUI_ALIGN_CENTER) {
             cui_text(ui, "Slideshow interval (s)", .size = 13);
             float iv = (float)S.slideshow.interval;
             if (cui_slider(ui, "interval", &iv, 0.5f, 60.0f)) {
@@ -627,21 +772,29 @@ static void frame(cui_ctx *ui, void *user) {
         }
     }
 
-    /* Context menu for the browser area. */
-    cui_context_menu(ui, "browser_ctx") {
-        if (cui_menu_item(ui, "Open")) { /* placeholder */ }
-        if (cui_menu_item(ui, "Slideshow here")) {
-            S.slideshow.recursive = false;
-            S.slideshow.shuffle = false;
-            S.slideshow.interval = 5.0;
-            slideshow_start(ui);
-        }
-        if (cui_menu_item(ui, "Toggle theme")) {
-            S.dark = !S.dark;
-            cui_set_theme(ui, S.dark ? CUI_THEME_DARK : CUI_THEME_LIGHT);
-            save_settings();
+    /* Delete confirmation dialog. */
+    cui_dialog(ui, "Delete file?", &S.show_delete_confirm, .width = 420) {
+        cui_text(ui, "Delete this file permanently?", .size = 13);
+        cui_text(ui, S.delete_path, .size = 11, .color = CUI_COLOR_TEXT_SECONDARY);
+        cui_dialog_footer(ui) {
+            if (cui_button(ui, "Cancel")) S.show_delete_confirm = false;
+            if (cui_button(ui, "Delete", .variant = CUI_BUTTON_DANGER)) {
+                if (remove(S.delete_path) == 0) {
+                    if (strcmp(S.browser_preview_path, S.delete_path) == 0) {
+                        if (S.browser_preview) { cui_image_destroy(ui, S.browser_preview); S.browser_preview = 0; }
+                        S.browser_preview_path[0] = '\0';
+                    }
+                    S.browser.selected_path[0] = '\0';
+                    cui_toast(ui, "File deleted", .tone = CUI_TONE_SUCCESS);
+                } else {
+                    cui_toast(ui, "Could not delete file", .tone = CUI_TONE_DANGER);
+                }
+                S.show_delete_confirm = false;
+                S.delete_path[0] = '\0';
+            }
         }
     }
+
 }
 
 static void print_usage(void) {
@@ -754,6 +907,8 @@ int main(int argc, char **argv) {
     S.window_maximized = true;
     S.slideshow.interval = 5.0;
     S.slideshow.wrap = true;
+    snprintf(S.thumbnails_location, sizeof S.thumbnails_location, "per-directory");
+    S.preview_enabled = true;
 
     const char *home = getenv("HOME");
     if (home && home[0]) {
@@ -849,6 +1004,10 @@ int main(int argc, char **argv) {
     if (S.viewer.texture) {
         cui_image_destroy(cui_app_ui(app), S.viewer.texture);
         S.viewer.texture = 0;
+    }
+    if (S.browser_preview) {
+        cui_image_destroy(cui_app_ui(app), S.browser_preview);
+        S.browser_preview = 0;
     }
     slideshow_free();
     save_settings();

@@ -28,6 +28,7 @@ typedef struct {
     int thumbnails_quality;
     bool thumbnails_show_directories;
     bool thumbnails_slow_update;
+    bool preview_enabled;
 } app_settings;
 
 void settings_defaults(app_settings *s);
