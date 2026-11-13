@@ -47,6 +47,13 @@ add_executable(cuiviewer
     src/settings.c
     src/thumbnails.c
     src/pdf_viewer.c
+    src/i18n.c
+    src/lang/en.c
+    src/lang/de.c
+    src/lang/es.c
+    src/lang/fr.c
+    src/lang/it.c
+    src/lang/pt.c
 )
 target_include_directories(cuiviewer PRIVATE
     ${CMAKE_CURRENT_SOURCE_DIR}/include

@@ -23,33 +23,23 @@
 #include "settings.h"
 #include "thumbnails.h"
 #include "pdf_viewer.h"
+#include "i18n.h"
+#include "i18n.h"
 
 #ifdef HAVE_MUPDF
 #include <mupdf/fitz.h>
 #endif
 
 enum { VIEW_BROWSER = 0, VIEW_VIEWER };
-enum { LANG_EN = 0, LANG_DE, LANG_ES, LANG_FR, LANG_IT, LANG_PT, LANG_COUNT };
 
-enum {
-    T_APP, T_BROWSER, T_VIEWER, T_LANGUAGE, T_THEME, T_OPEN, T_BACK,
-    T_NO_IMAGE, T_FAILED, T_COUNT
+typedef struct { const char *code; const char *name; } lang_info;
+static const lang_info LANGS[] = {
+    { "en", "English" }, { "de", "Deutsch" }, { "es", "Español" },
+    { "fr", "Français" }, { "it", "Italiano" }, { "pt", "Português" }
 };
+/* LANG_COUNT defined in i18n.h */
 
-static const char *dict[LANG_COUNT][T_COUNT] = {
-    { "cuiviewer", "Browser", "Viewer", "Language", "Theme", "Open", "Back",
-      "No image selected", "Could not open image" },
-    { "cuiviewer", "Browser", "Betrachter", "Sprache", "Thema", "Öffnen", "Zurück",
-      "Kein Bild ausgewählt", "Bild konnte nicht geöffnet werden" },
-    { "cuiviewer", "Navegador", "Visor", "Idioma", "Tema", "Abrir", "Volver",
-      "Ninguna imagen seleccionada", "No se pudo abrir la imagen" },
-    { "cuiviewer", "Navigateur", "Visionneuse", "Langue", "Thème", "Ouvrir", "Retour",
-      "Aucune image sélectionnée", "Impossible d'ouvrir l'image" },
-    { "cuiviewer", "Browser", "Visualizzatore", "Lingua", "Tema", "Apri", "Indietro",
-      "Nessuna immagine selezionata", "Impossibile aprire l'immagine" },
-    { "cuiviewer", "Navegador", "Visualizador", "Idioma", "Tema", "Abrir", "Voltar",
-      "Nenhuma imagem selecionada", "Não foi possível abrir a imagem" },
-};
+/* i18n provided by i18n.h / i18n.c */
 
 typedef struct {
     char path[4096];
@@ -97,6 +87,12 @@ typedef struct {
     bool show_settings;
     bool show_delete_confirm;
     char delete_path[4096];
+    bool show_rename;
+    char rename_path[4096];
+    char rename_new[256];
+    bool show_move;
+    char move_path[4096];
+    char move_dest[4096];
     cui_texture browser_preview;
     char browser_preview_path[4096];
     int browser_preview_w;
@@ -111,10 +107,6 @@ typedef struct {
 } app_state;
 
 static app_state S;
-
-static const char *msg(int id) {
-    return dict[S.lang][id];
-}
 
 static void save_settings(void) {
     app_settings st;
@@ -140,6 +132,7 @@ static void load_settings_into_state(void) {
     settings_load(&st, S.settings_path);
     S.lang = st.lang;
     if (S.lang < 0 || S.lang >= LANG_COUNT) S.lang = LANG_EN;
+    i18n_set_language(S.lang);
     S.dark = st.dark;
     if (st.last_directory[0]) {
         snprintf(S.browser.current_dir, sizeof S.browser.current_dir, "%s", st.last_directory);
@@ -505,12 +498,13 @@ static void frame(cui_ctx *ui, void *user) {
         cui_spacer(ui);
 
         cui_menu(ui, msg(T_LANGUAGE), .icon = CUI_ICON_GLOBE) {
-            if (cui_menu_item(ui, "English", .checked = S.lang == LANG_EN)) { S.lang = LANG_EN; save_settings(); }
-            if (cui_menu_item(ui, "Deutsch", .checked = S.lang == LANG_DE)) { S.lang = LANG_DE; save_settings(); }
-            if (cui_menu_item(ui, "Español", .checked = S.lang == LANG_ES)) { S.lang = LANG_ES; save_settings(); }
-            if (cui_menu_item(ui, "Français", .checked = S.lang == LANG_FR)) { S.lang = LANG_FR; save_settings(); }
-            if (cui_menu_item(ui, "Italiano", .checked = S.lang == LANG_IT)) { S.lang = LANG_IT; save_settings(); }
-            if (cui_menu_item(ui, "Português", .checked = S.lang == LANG_PT)) { S.lang = LANG_PT; save_settings(); }
+            for (int i = 0; i < LANG_COUNT; i++) {
+                if (cui_menu_item(ui, LANGS[i].name, .checked = S.lang == i)) {
+                    S.lang = i;
+                    i18n_set_language(S.lang);
+                    save_settings();
+                }
+            }
         }
 
         cui_menu(ui, "Window", .icon = CUI_ICON_MAXIMIZE_2) {
@@ -520,6 +514,35 @@ static void frame(cui_ctx *ui, void *user) {
             }
         }
 
+        if (S.view == VIEW_VIEWER) {
+            cui_menu(ui, msg(T_ACTIONS), .icon = CUI_ICON_ELLIPSIS) {
+                if (cui_menu_item(ui, msg(T_RENAME))) {
+                    if (S.viewer.path[0]) {
+                        snprintf(S.rename_path, sizeof S.rename_path, "%s", S.viewer.path);
+                        const char *base = strrchr(S.viewer.path, '/');
+                        base = base ? base + 1 : S.viewer.path;
+                        snprintf(S.rename_new, sizeof S.rename_new, "%s", base);
+                        S.show_rename = true;
+                    }
+                }
+                if (cui_menu_item(ui, msg(T_MOVE))) {
+                    if (S.viewer.path[0]) {
+                        snprintf(S.move_path, sizeof S.move_path, "%s", S.viewer.path);
+                        S.move_dest[0] = '\0';
+                        S.show_move = true;
+                    }
+                }
+                if (cui_menu_item(ui, msg(T_OPEN_SYSTEM))) {
+                    if (S.viewer.path[0]) cui_app_open_url(S.viewer.path);
+                }
+                if (cui_menu_item(ui, msg(T_DELETE))) {
+                    if (S.viewer.path[0]) {
+                        snprintf(S.delete_path, sizeof S.delete_path, "%s", S.viewer.path);
+                        S.show_delete_confirm = true;
+                    }
+                }
+            }
+        }
         if (cui_icon_button(ui, CUI_ICON_SETTINGS, .tooltip = "Settings")) S.show_settings = true;
         if (cui_icon_button(ui, CUI_ICON_CIRCLE_HELP, .tooltip = "Help")) S.show_help = true;
         if (cui_icon_button(ui, S.dark ? CUI_ICON_SUN : CUI_ICON_MOON, .tooltip = msg(T_THEME))) {
@@ -543,7 +566,7 @@ static void frame(cui_ctx *ui, void *user) {
                 if (cui_icon_button(ui, S.file_sort_desc ? CUI_ICON_ARROW_DOWN : CUI_ICON_ARROW_UP, .tooltip = "Toggle sort order")) {
                     S.file_sort_desc = !S.file_sort_desc;
                 }
-                cui_menu(ui, "Actions", .icon = CUI_ICON_ELLIPSIS) {
+                cui_menu(ui, msg(T_ACTIONS), .icon = CUI_ICON_ELLIPSIS) {
                     if (cui_menu_item(ui, "Open folder in system")) {
                         char target[4096];
                         const char *sel = S.browser.selected_path[0] ? S.browser.selected_path : S.browser.current_dir;
@@ -557,11 +580,29 @@ static void frame(cui_ctx *ui, void *user) {
                         }
                         cui_app_open_url(target);
                     }
-                    if (cui_menu_item(ui, "Delete")) {
+                    if (cui_menu_item(ui, msg(T_DELETE))) {
                         const char *sel = S.browser.selected_path[0] ? S.browser.selected_path : "";
                         if (sel[0]) {
                             snprintf(S.delete_path, sizeof S.delete_path, "%s", sel);
                             S.show_delete_confirm = true;
+                        }
+                    }
+                    if (cui_menu_item(ui, msg(T_RENAME))) {
+                        const char *sel = S.browser.selected_path[0] ? S.browser.selected_path : "";
+                        if (sel[0]) {
+                            snprintf(S.rename_path, sizeof S.rename_path, "%s", sel);
+                            const char *base = strrchr(sel, '/');
+                            base = base ? base + 1 : sel;
+                            snprintf(S.rename_new, sizeof S.rename_new, "%s", base);
+                            S.show_rename = true;
+                        }
+                    }
+                    if (cui_menu_item(ui, msg(T_MOVE))) {
+                        const char *sel = S.browser.selected_path[0] ? S.browser.selected_path : "";
+                        if (sel[0]) {
+                            snprintf(S.move_path, sizeof S.move_path, "%s", sel);
+                            S.move_dest[0] = '\0';
+                            S.show_move = true;
                         }
                     }
                     if (cui_menu_item(ui, "Slideshow here")) {
@@ -624,11 +665,29 @@ static void frame(cui_ctx *ui, void *user) {
                             }
                             cui_app_open_url(target);
                         }
-                        if (cui_menu_item(ui, "Delete")) {
+                        if (cui_menu_item(ui, msg(T_DELETE))) {
                             const char *sel = S.browser.selected_path[0] ? S.browser.selected_path : "";
                             if (sel[0]) {
                                 snprintf(S.delete_path, sizeof S.delete_path, "%s", sel);
                                 S.show_delete_confirm = true;
+                            }
+                        }
+                        if (cui_menu_item(ui, msg(T_RENAME))) {
+                            const char *sel = S.browser.selected_path[0] ? S.browser.selected_path : "";
+                            if (sel[0]) {
+                                snprintf(S.rename_path, sizeof S.rename_path, "%s", sel);
+                                const char *base = strrchr(sel, '/');
+                                base = base ? base + 1 : sel;
+                                snprintf(S.rename_new, sizeof S.rename_new, "%s", base);
+                                S.show_rename = true;
+                            }
+                        }
+                        if (cui_menu_item(ui, msg(T_MOVE))) {
+                            const char *sel = S.browser.selected_path[0] ? S.browser.selected_path : "";
+                            if (sel[0]) {
+                                snprintf(S.move_path, sizeof S.move_path, "%s", sel);
+                                S.move_dest[0] = '\0';
+                                S.show_move = true;
                             }
                         }
                         if (cui_menu_item(ui, "Slideshow here")) {
@@ -707,8 +766,8 @@ static void frame(cui_ctx *ui, void *user) {
                     close_image(ui);
                 }
                 if (S.slideshow.count > 1) {
-                    if (cui_button(ui, "Prev File", .size = CUI_SIZE_SM)) slideshow_advance(ui, -1);
-                    if (cui_button(ui, "Next File", .size = CUI_SIZE_SM)) slideshow_advance(ui, 1);
+                    if (cui_button(ui, msg(T_PREV_FILE), .size = CUI_SIZE_SM)) slideshow_advance(ui, -1);
+                    if (cui_button(ui, msg(T_NEXT_FILE), .size = CUI_SIZE_SM)) slideshow_advance(ui, 1);
                 }
                 if (!(S.viewer.pdf && pdf_viewer_is_open(S.viewer.pdf))) {
                     if (S.slideshow.count > 1) {
@@ -739,14 +798,14 @@ static void frame(cui_ctx *ui, void *user) {
                     char pbuf[64];
                     snprintf(pbuf, sizeof pbuf, "Page %d / %d", pdf_viewer_page(S.viewer.pdf) + 1, pdf_viewer_page_count(S.viewer.pdf));
                     cui_text(ui, pbuf, .size = 12, .color = CUI_COLOR_TEXT_SECONDARY);
-                    if (cui_button(ui, "First", .size = CUI_SIZE_SM)) pdf_viewer_first(S.viewer.pdf, ui);
-                    if (cui_button(ui, "Prev Page", .size = CUI_SIZE_SM)) pdf_viewer_prev(S.viewer.pdf, ui);
-                    if (cui_button(ui, "Next Page", .size = CUI_SIZE_SM)) pdf_viewer_next(S.viewer.pdf, ui);
-                    if (cui_button(ui, "Last", .size = CUI_SIZE_SM)) pdf_viewer_last(S.viewer.pdf, ui);
-                    if (cui_button(ui, "Print", .size = CUI_SIZE_SM)) {
+                    if (cui_button(ui, msg(T_FIRST), .size = CUI_SIZE_SM)) pdf_viewer_first(S.viewer.pdf, ui);
+                    if (cui_button(ui, msg(T_PREV_PAGE), .size = CUI_SIZE_SM)) pdf_viewer_prev(S.viewer.pdf, ui);
+                    if (cui_button(ui, msg(T_NEXT_PAGE), .size = CUI_SIZE_SM)) pdf_viewer_next(S.viewer.pdf, ui);
+                    if (cui_button(ui, msg(T_LAST), .size = CUI_SIZE_SM)) pdf_viewer_last(S.viewer.pdf, ui);
+                    if (cui_button(ui, msg(T_PRINT), .size = CUI_SIZE_SM)) {
                         pdf_viewer_print_range(S.viewer.pdf, ui, 1, pdf_viewer_page_count(S.viewer.pdf));
                     }
-                    if (cui_button(ui, "Print page", .size = CUI_SIZE_SM)) {
+                    if (cui_button(ui, msg(T_PRINT_PAGE), .size = CUI_SIZE_SM)) {
                         int pg = pdf_viewer_page(S.viewer.pdf) + 1;
                         pdf_viewer_print_range(S.viewer.pdf, ui, pg, pg);
                     }
@@ -779,6 +838,34 @@ static void frame(cui_ctx *ui, void *user) {
             } else {
                 cui_text(ui, msg(T_NO_IMAGE));
             }
+
+            cui_context_menu(ui, "viewer_ctx") {
+                if (cui_menu_item(ui, msg(T_RENAME))) {
+                    if (S.viewer.path[0]) {
+                        snprintf(S.rename_path, sizeof S.rename_path, "%s", S.viewer.path);
+                        const char *base = strrchr(S.viewer.path, '/');
+                        base = base ? base + 1 : S.viewer.path;
+                        snprintf(S.rename_new, sizeof S.rename_new, "%s", base);
+                        S.show_rename = true;
+                    }
+                }
+                if (cui_menu_item(ui, msg(T_MOVE))) {
+                    if (S.viewer.path[0]) {
+                        snprintf(S.move_path, sizeof S.move_path, "%s", S.viewer.path);
+                        S.move_dest[0] = '\0';
+                        S.show_move = true;
+                    }
+                }
+                if (cui_menu_item(ui, msg(T_OPEN_SYSTEM))) {
+                    if (S.viewer.path[0]) cui_app_open_url(S.viewer.path);
+                }
+                if (cui_menu_item(ui, msg(T_DELETE))) {
+                    if (S.viewer.path[0]) {
+                        snprintf(S.delete_path, sizeof S.delete_path, "%s", S.viewer.path);
+                        S.show_delete_confirm = true;
+                    }
+                }
+            }
         }
     }
 
@@ -810,6 +897,7 @@ static void frame(cui_ctx *ui, void *user) {
             for (int i = 0; i < 6; i++) {
                 if (cui_button(ui, names[i], .size = CUI_SIZE_SM, .variant = S.lang == i ? CUI_BUTTON_PRIMARY : CUI_BUTTON_GHOST)) {
                     S.lang = i;
+                    i18n_set_language(S.lang);
                     save_settings();
                 }
             }
@@ -853,7 +941,7 @@ static void frame(cui_ctx *ui, void *user) {
         cui_text(ui, "Delete this file permanently?", .size = 13);
         cui_text(ui, S.delete_path, .size = 11, .color = CUI_COLOR_TEXT_SECONDARY);
         cui_dialog_footer(ui) {
-            if (cui_button(ui, "Cancel")) S.show_delete_confirm = false;
+            if (cui_button(ui, msg(T_CANCEL))) S.show_delete_confirm = false;
             if (cui_button(ui, "Delete", .variant = CUI_BUTTON_DANGER)) {
                 if (remove(S.delete_path) == 0) {
                     if (strcmp(S.browser_preview_path, S.delete_path) == 0) {
@@ -867,6 +955,57 @@ static void frame(cui_ctx *ui, void *user) {
                 }
                 S.show_delete_confirm = false;
                 S.delete_path[0] = '\0';
+            }
+        }
+    }
+
+    /* Rename dialog */
+    cui_dialog(ui, "Rename", &S.show_rename, .width = 420) {
+        cui_text(ui, msg(T_NEW_NAME), .size = 13);
+        cui_input(ui, "rename_new", S.rename_new, sizeof S.rename_new, .placeholder = "filename");
+        cui_dialog_footer(ui) {
+            if (cui_button(ui, msg(T_CANCEL))) S.show_rename = false;
+            if (cui_button(ui, msg(T_RENAME))) {
+                if (S.rename_path[0] && S.rename_new[0]) {
+                    char dir[4096];
+                    snprintf(dir, sizeof dir, "%s", S.rename_path);
+                    char *slash = strrchr(dir, '/');
+                    if (slash) *slash = '\0';
+                    else snprintf(dir, sizeof dir, ".");
+                    char newpath[4096];
+                    snprintf(newpath, sizeof newpath, "%s/%s", dir, S.rename_new);
+                    if (rename(S.rename_path, newpath) == 0) {
+                        cui_toast(ui, msg(T_RENAMED), .tone = CUI_TONE_SUCCESS);
+                        if (strcmp(S.viewer.path, S.rename_path) == 0) snprintf(S.viewer.path, sizeof S.viewer.path, "%s", newpath);
+                    } else {
+                        cui_toast(ui, msg(T_COULD_NOT_RENAME), .tone = CUI_TONE_DANGER);
+                    }
+                }
+                S.show_rename = false;
+            }
+        }
+    }
+
+    /* Move dialog */
+    cui_dialog(ui, "Move", &S.show_move, .width = 460) {
+        cui_text(ui, msg(T_DEST_DIR), .size = 13);
+        cui_input(ui, "move_dest", S.move_dest, sizeof S.move_dest, .placeholder = "/path/to/destination");
+        cui_dialog_footer(ui) {
+            if (cui_button(ui, msg(T_CANCEL))) S.show_move = false;
+            if (cui_button(ui, msg(T_MOVE))) {
+                if (S.move_path[0] && S.move_dest[0]) {
+                    const char *base = strrchr(S.move_path, '/');
+                    base = base ? base + 1 : S.move_path;
+                    char newpath[4096];
+                    snprintf(newpath, sizeof newpath, "%s/%s", S.move_dest, base);
+                    if (rename(S.move_path, newpath) == 0) {
+                        cui_toast(ui, msg(T_MOVED), .tone = CUI_TONE_SUCCESS);
+                        if (strcmp(S.viewer.path, S.move_path) == 0) snprintf(S.viewer.path, sizeof S.viewer.path, "%s", newpath);
+                    } else {
+                        cui_toast(ui, msg(T_COULD_NOT_MOVE), .tone = CUI_TONE_DANGER);
+                    }
+                }
+                S.show_move = false;
             }
         }
     }
@@ -977,6 +1116,7 @@ int main(int argc, char **argv) {
     memset(&S, 0, sizeof S);
     S.view = VIEW_BROWSER;
     S.lang = LANG_EN;
+    i18n_set_language(S.lang);
     S.dark = false;
     S.first_frame = true;
     S.viewer.checkerboard = true;
@@ -1009,12 +1149,11 @@ int main(int argc, char **argv) {
     if (startup_dir[0]) snprintf(S.browser.current_dir, sizeof S.browser.current_dir, "%s", startup_dir);
     if (startup_theme[0]) S.dark = strcmp(startup_theme, "dark") == 0;
     if (startup_lang[0]) {
-        if (strcmp(startup_lang, "de") == 0) S.lang = LANG_DE;
-        else if (strcmp(startup_lang, "es") == 0) S.lang = LANG_ES;
-        else if (strcmp(startup_lang, "fr") == 0) S.lang = LANG_FR;
-        else if (strcmp(startup_lang, "it") == 0) S.lang = LANG_IT;
-        else if (strcmp(startup_lang, "pt") == 0) S.lang = LANG_PT;
-        else S.lang = LANG_EN;
+        S.lang = LANG_EN;
+        for (int i = 0; i < LANG_COUNT; i++) {
+            if (strcmp(startup_lang, LANGS[i].code) == 0) { S.lang = i; break; }
+        }
+        i18n_set_language(S.lang);
     }
     if (startup_thumb_loc[0]) {
         /* stored in settings for now; runtime not fully wired */
