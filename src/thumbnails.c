@@ -7,7 +7,14 @@
 #include <sys/stat.h>
 #include <sys/types.h>
 #include <errno.h>
+
+#ifdef _WIN32
+#include <direct.h>
+#define MKDIR(d) _mkdir(d)
+#else
 #include <unistd.h>
+#define MKDIR(d) mkdir((d), 0755)
+#endif
 
 #define STB_IMAGE_IMPLEMENTATION
 #include "../vendor/CUI/third_party/stb_image.h"
@@ -21,11 +28,11 @@ static void mkdir_p(const char *path) {
         if (*p == '/' || *p == '\\') {
             char c = *p;
             *p = '\0';
-            mkdir(tmp, 0755);
+            MKDIR(tmp);
             *p = c;
         }
     }
-    mkdir(tmp, 0755);
+    MKDIR(tmp);
 }
 
 static void path_dirname(const char *src, char *out, size_t cap) {

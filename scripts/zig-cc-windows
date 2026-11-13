@@ -1,0 +1,4 @@
+#!/bin/sh
+# Wrapper used to cross-compile the Win32 backend from Linux (or other hosts)
+# with Zig. Keeps the target explicit so CMake compiler detection works.
+exec zig cc -target x86_64-windows-gnu "$@"

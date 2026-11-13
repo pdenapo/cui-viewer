@@ -164,6 +164,38 @@ Settings are stored as JSON in the application data directory:
   `~/.local/share/cuiviewer/settings.json`
 - Windows: `%APPDATA%\cuiviewer\settings.json`
 
+## Cross-compilation and pre-flight verification
+
+When developing on Linux you can verify the Windows build without leaving the
+host by using Zig as a cross-compiler. Zig is used only as the C compiler; CMake
+and Ninja are still required.
+
+```sh
+# Cross-compile the Win32 backend with Zig
+./build_windows_zig.sh
+# -> build_windows_zig/cuiviewer.exe
+```
+
+To run every build that the current host can produce (Linux backends plus the
+Windows/Win32 backend when Zig is installed):
+
+```sh
+scripts/verify_builds.sh            # all available targets
+scripts/verify_builds.sh --linux    # only Linux backends
+scripts/verify_builds.sh --windows   # only the Win32 backend
+```
+
+The helper `scripts/zig-cc-windows` wraps `zig cc -target x86_64-windows-gnu`
+so CMake compiler detection works reliably.
+
+### macOS
+
+macOS cannot be reliably cross-compiled from Linux for this project: the Cocoa
+backend depends on Apple frameworks (Cocoa, QuartzCore, OpenGL) and the
+Objective-C runtime, which are not available in a Linux cross toolchain. Use
+`./build_macos.sh` directly on macOS instead. Zig can target macOS in general,
+but that path is not supported here without an Apple SDK/osxcross setup.
+
 ## Packaging
 
 Packaging files for Debian, RPM and Arch are under `packaging/`. See
