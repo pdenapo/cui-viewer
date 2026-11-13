@@ -5,6 +5,13 @@
 #include <stdlib.h>
 #include <string.h>
 #include <stdbool.h>
+#ifdef _WIN32
+#ifndef strcasecmp
+#define strcasecmp _stricmp
+#endif
+#else
+#include <strings.h>
+#endif
 #include <sys/stat.h>
 #include <unistd.h>
 #include <time.h>
@@ -15,6 +22,11 @@
 
 #include "settings.h"
 #include "thumbnails.h"
+#include "pdf_viewer.h"
+
+#ifdef HAVE_MUPDF
+#include <mupdf/fitz.h>
+#endif
 
 enum { VIEW_BROWSER = 0, VIEW_VIEWER };
 enum { LANG_EN = 0, LANG_DE, LANG_ES, LANG_FR, LANG_IT, LANG_PT, LANG_COUNT };
@@ -46,6 +58,7 @@ typedef struct {
     int image_h;
     cui_image_view view;
     bool checkerboard;
+    pdf_viewer *pdf;
 } viewer_state;
 
 typedef struct {
@@ -143,22 +156,48 @@ static void load_settings_into_state(void) {
 
 static bool is_image_path(const char *path) {
     if (!path) return false;
-    size_t n = strlen(path);
-    if (n < 4) return false;
-    const char *ext = path + n - 4;
-    if (strcasecmp(ext, ".png") == 0) return true;
-    if (n >= 5) {
-        ext = path + n - 5;
-        if (strcasecmp(ext, ".jpeg") == 0 || strcasecmp(ext, ".jpg") == 0) return true;
-    }
-    /* .jpg is 4 chars handled above? .jpg = 4, yes */
-    if (strcasecmp(path + n - 4, ".jpg") == 0) return true;
+    const char *dot = strrchr(path, '.');
+    if (!dot) return false;
+    if (strcasecmp(dot, ".png") == 0) return true;
+    if (strcasecmp(dot, ".jpg") == 0) return true;
+    if (strcasecmp(dot, ".jpeg") == 0) return true;
+#ifdef HAVE_MUPDF
+    if (strcasecmp(dot, ".pdf") == 0) return true;
+#endif
     return false;
 }
 
 static void viewer_collect_siblings(const char *path);
 
 static void open_image(cui_ctx *ui, const char *path) {
+    if (!path || !path[0]) return;
+    const char *dot = strrchr(path, '.');
+    if (dot && strcasecmp(dot, ".pdf") == 0) {
+        if (S.viewer.pdf && pdf_viewer_is_open(S.viewer.pdf)) {
+            pdf_viewer_close(S.viewer.pdf, ui);
+        }
+        if (S.viewer.texture) {
+            /* texture may be from a previous non-pdf image */
+            cui_image_destroy(ui, S.viewer.texture);
+            S.viewer.texture = 0;
+        }
+        if (!S.viewer.pdf) S.viewer.pdf = pdf_viewer_create();
+        if (!pdf_viewer_open(S.viewer.pdf, ui, path)) {
+            cui_toast(ui, msg(T_FAILED), .tone = CUI_TONE_DANGER);
+            return;
+        }
+        S.viewer.texture = (cui_texture)pdf_viewer_texture(S.viewer.pdf);
+        S.viewer.image_w = pdf_viewer_width(S.viewer.pdf);
+        S.viewer.image_h = pdf_viewer_height(S.viewer.pdf);
+        snprintf(S.viewer.path, sizeof S.viewer.path, "%s", path);
+        S.viewer.view = *(cui_image_view *)pdf_viewer_view(S.viewer.pdf);
+        S.view = VIEW_VIEWER;
+        if (!S.slideshow.active) viewer_collect_siblings(path);
+        return;
+    }
+    if (S.viewer.pdf && pdf_viewer_is_open(S.viewer.pdf)) {
+        pdf_viewer_close(S.viewer.pdf, ui);
+    }
     if (S.viewer.texture) {
         cui_image_destroy(ui, S.viewer.texture);
         S.viewer.texture = 0;
@@ -182,6 +221,9 @@ static void open_image(cui_ctx *ui, const char *path) {
 
 static void slideshow_free(void);
 static void close_image(cui_ctx *ui) {
+    if (S.viewer.pdf && pdf_viewer_is_open(S.viewer.pdf)) {
+        pdf_viewer_close(S.viewer.pdf, ui);
+    }
     if (S.viewer.texture) {
         cui_image_destroy(ui, S.viewer.texture);
         S.viewer.texture = 0;
@@ -378,6 +420,12 @@ static int cui_filtered_list(void *user, const char *path, cui_file_entry *out, 
 
 static void frame(cui_ctx *ui, void *user) {
     (void)user;
+    if (S.viewer.pdf && pdf_viewer_is_open(S.viewer.pdf)) {
+        S.viewer.texture = (cui_texture)pdf_viewer_texture(S.viewer.pdf);
+        S.viewer.image_w = pdf_viewer_width(S.viewer.pdf);
+        S.viewer.image_h = pdf_viewer_height(S.viewer.pdf);
+        S.viewer.view = *(cui_image_view *)pdf_viewer_view(S.viewer.pdf);
+    }
     if (S.first_frame) {
         S.first_frame = false;
         cui_set_theme(ui, S.dark ? CUI_THEME_DARK : CUI_THEME_LIGHT);
@@ -424,6 +472,12 @@ static void frame(cui_ctx *ui, void *user) {
     } else if (S.view == VIEW_VIEWER) {
         if (cui_shortcut(ui, 0, CUI_KEY_ESCAPE) || cui_shortcut(ui, 0, CUI_KEY_BACKSPACE))
             close_image(ui);
+        if (S.viewer.pdf && pdf_viewer_is_open(S.viewer.pdf)) {
+            if (cui_shortcut(ui, 0, CUI_KEY_PAGE_DOWN))
+                pdf_viewer_next(S.viewer.pdf, ui);
+            if (cui_shortcut(ui, 0, CUI_KEY_PAGE_UP))
+                pdf_viewer_prev(S.viewer.pdf, ui);
+        }
         if (!S.slideshow.active && S.slideshow.count > 1) {
             if (cui_shortcut(ui, 0, CUI_KEY_RIGHT)) slideshow_advance(ui, 1);
             if (cui_shortcut(ui, 0, CUI_KEY_LEFT)) slideshow_advance(ui, -1);
@@ -550,7 +604,7 @@ static void frame(cui_ctx *ui, void *user) {
                 cui_column(ui, .width = CUI_FILL, .height = CUI_FILL, .gap = 8, .pad_bottom = 12) {
                     cui_file_browser_result r = cui_file_browser(ui, "browser",
                         S.browser.current_dir, sizeof S.browser.current_dir,
-                        .filter = "*.png;*.jpg;*.jpeg",
+                        .filter = "*.png;*.jpg;*.jpeg;*.pdf",
                         .list = cui_filtered_list,
                         .height = CUI_FILL);
 
@@ -652,31 +706,49 @@ static void frame(cui_ctx *ui, void *user) {
                 if (cui_button(ui, msg(T_BACK), .icon = CUI_ICON_ARROW_LEFT)) {
                     close_image(ui);
                 }
-                if (S.slideshow.count > 1) {
-                    if (cui_button(ui, "Prev", .icon = CUI_ICON_ARROW_LEFT)) slideshow_advance(ui, -1);
-                    if (cui_button(ui, "Next", .icon = CUI_ICON_ARROW_RIGHT)) slideshow_advance(ui, 1);
-                }
-                if (!S.slideshow.active) {
-                    if (cui_button(ui, "Slideshow", .icon = CUI_ICON_PLAY)) {
-                        if (S.slideshow.count == 0) viewer_collect_siblings(S.viewer.path);
-                        S.slideshow.active = true;
-                        S.slideshow.last_time = now_seconds();
-                        save_settings();
+                if (!(S.viewer.pdf && pdf_viewer_is_open(S.viewer.pdf))) {
+                    if (S.slideshow.count > 1) {
+                        if (cui_button(ui, "Prev", .icon = CUI_ICON_ARROW_LEFT)) slideshow_advance(ui, -1);
+                        if (cui_button(ui, "Next", .icon = CUI_ICON_ARROW_RIGHT)) slideshow_advance(ui, 1);
                     }
-                } else {
-                    if (cui_button(ui, S.slideshow.paused ? "Play" : "Pause", .icon = CUI_ICON_PLAY)) {
-                        S.slideshow.paused = !S.slideshow.paused;
-                        S.slideshow.last_time = now_seconds();
-                    }
-                    if (cui_button(ui, "Stop", .icon = CUI_ICON_SQUARE)) {
-                        S.slideshow.active = false;
-                        slideshow_free();
-                        if (S.viewer.path[0]) viewer_collect_siblings(S.viewer.path);
+                    if (!S.slideshow.active) {
+                        if (cui_button(ui, "Slideshow", .icon = CUI_ICON_PLAY)) {
+                            if (S.slideshow.count == 0) viewer_collect_siblings(S.viewer.path);
+                            S.slideshow.active = true;
+                            S.slideshow.last_time = now_seconds();
+                            save_settings();
+                        }
+                    } else {
+                        if (cui_button(ui, S.slideshow.paused ? "Play" : "Pause", .icon = CUI_ICON_PLAY)) {
+                            S.slideshow.paused = !S.slideshow.paused;
+                            S.slideshow.last_time = now_seconds();
+                        }
+                        if (cui_button(ui, "Stop", .icon = CUI_ICON_SQUARE)) {
+                            S.slideshow.active = false;
+                            slideshow_free();
+                            if (S.viewer.path[0]) viewer_collect_siblings(S.viewer.path);
+                        }
                     }
                 }
                 cui_text(ui, S.viewer.path, .size = 12, .color = CUI_COLOR_TEXT_SECONDARY);
+                if (S.viewer.pdf && pdf_viewer_is_open(S.viewer.pdf)) {
+                    char pbuf[64];
+                    snprintf(pbuf, sizeof pbuf, "Page %d / %d", pdf_viewer_page(S.viewer.pdf) + 1, pdf_viewer_page_count(S.viewer.pdf));
+                    cui_text(ui, pbuf, .size = 12, .color = CUI_COLOR_TEXT_SECONDARY);
+                    if (cui_button(ui, "First", .size = CUI_SIZE_SM)) pdf_viewer_first(S.viewer.pdf, ui);
+                    if (cui_button(ui, "Prev Page", .size = CUI_SIZE_SM)) pdf_viewer_prev(S.viewer.pdf, ui);
+                    if (cui_button(ui, "Next Page", .size = CUI_SIZE_SM)) pdf_viewer_next(S.viewer.pdf, ui);
+                    if (cui_button(ui, "Last", .size = CUI_SIZE_SM)) pdf_viewer_last(S.viewer.pdf, ui);
+                    if (cui_button(ui, "Print", .size = CUI_SIZE_SM)) {
+                        pdf_viewer_print_range(S.viewer.pdf, ui, 1, pdf_viewer_page_count(S.viewer.pdf));
+                    }
+                    if (cui_button(ui, "Print page", .size = CUI_SIZE_SM)) {
+                        int pg = pdf_viewer_page(S.viewer.pdf) + 1;
+                        pdf_viewer_print_range(S.viewer.pdf, ui, pg, pg);
+                    }
+                }
             }
-            if (S.slideshow.active) {
+            if (S.slideshow.active && !(S.viewer.pdf && pdf_viewer_is_open(S.viewer.pdf))) {
                 cui_row(ui, .gap = 8, .align = CUI_ALIGN_CENTER) {
                     if (cui_button(ui, S.slideshow.paused ? "Play" : "Pause", .icon = CUI_ICON_PLAY)) {
                         S.slideshow.paused = !S.slideshow.paused;
@@ -1016,9 +1088,16 @@ int main(int argc, char **argv) {
         frame(ui, &S);
     }
 
+    if (S.viewer.pdf && pdf_viewer_is_open(S.viewer.pdf)) {
+        pdf_viewer_close(S.viewer.pdf, cui_app_ui(app));
+    }
     if (S.viewer.texture) {
         cui_image_destroy(cui_app_ui(app), S.viewer.texture);
         S.viewer.texture = 0;
+    }
+    if (S.viewer.pdf) {
+        pdf_viewer_destroy(S.viewer.pdf, NULL);
+        S.viewer.pdf = NULL;
     }
     if (S.browser_preview) {
         cui_image_destroy(cui_app_ui(app), S.browser_preview);

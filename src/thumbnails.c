@@ -5,6 +5,13 @@
 #include <stdlib.h>
 #include <string.h>
 #include <sys/stat.h>
+#ifdef _WIN32
+#ifndef strcasecmp
+#define strcasecmp _stricmp
+#endif
+#else
+#include <strings.h>
+#endif
 #include <sys/types.h>
 #include <errno.h>
 
@@ -20,6 +27,10 @@
 #include "../vendor/CUI/third_party/stb_image.h"
 #define STB_IMAGE_WRITE_IMPLEMENTATION
 #include "../vendor/CUI/third_party/stb_image_write.h"
+
+#ifdef HAVE_MUPDF
+#include <mupdf/fitz.h>
+#endif
 
 static void mkdir_p(const char *path) {
     char tmp[4096];
@@ -109,9 +120,61 @@ bool thumbnail_ensure(const char *source, int size, const char *location, char *
     }
 
     int w = 0, h = 0, c = 0;
-    unsigned char *img = stbi_load(source, &w, &h, &c, 3);
+    unsigned char *img = NULL;
+#ifdef HAVE_MUPDF
+    {
+        size_t slen = strlen(source);
+        if (slen >= 4 && strcasecmp(source + slen - 4, ".pdf") == 0) {
+            fz_context *ctx = fz_new_context(NULL, NULL, FZ_STORE_DEFAULT);
+            if (ctx) {
+                fz_register_document_handlers(ctx);
+                fz_document *doc = NULL;
+                fz_try(ctx) { doc = fz_open_document(ctx, source); } fz_catch(ctx) { doc = NULL; }
+                if (doc && fz_count_pages(ctx, doc) > 0) {
+                    fz_page *pg = NULL;
+                    fz_try(ctx) { pg = fz_load_page(ctx, doc, 0); } fz_catch(ctx) { pg = NULL; }
+                    if (pg) {
+                        float scale = 2.0f;
+                        fz_matrix m = fz_scale(scale, scale);
+                        fz_pixmap *pix = NULL;
+                        fz_try(ctx) { pix = fz_new_pixmap_from_page(ctx, pg, m, fz_device_rgb(ctx), 0); } fz_catch(ctx) { pix = NULL; }
+                        fz_drop_page(ctx, pg);
+                        if (pix) {
+                            w = fz_pixmap_width(ctx, pix);
+                            h = fz_pixmap_height(ctx, pix);
+                            int comps = fz_pixmap_components(ctx, pix);
+                            unsigned char *samples = fz_pixmap_samples(ctx, pix);
+                            int stride = fz_pixmap_stride(ctx, pix);
+                            img = (unsigned char *)malloc((size_t)w * (size_t)h * 3);
+                            if (img) {
+                                for (int y = 0; y < h; y++) {
+                                    for (int x = 0; x < w; x++) {
+                                        unsigned char *s = samples + (size_t)y * (size_t)stride + (size_t)x * (size_t)comps;
+                                        unsigned char *d = img + ((size_t)y * (size_t)w + (size_t)x) * 3;
+                                        d[0] = comps >= 1 ? s[0] : 0;
+                                        d[1] = comps >= 2 ? s[1] : d[0];
+                                        d[2] = comps >= 3 ? s[2] : d[0];
+                                    }
+                                }
+                            }
+                            fz_drop_pixmap(ctx, pix);
+                        }
+                    }
+                }
+                if (doc) fz_drop_document(ctx, doc);
+            }
+            fz_drop_context(ctx);
+        }
+    }
+#endif
+    if (!img) {
+        img = stbi_load(source, &w, &h, &c, 3);
+    }
     if (!img || w <= 0 || h <= 0) {
-        if (img) stbi_image_free(img);
+        if (img) {
+            /* could be stbi or malloc; free appropriately */
+            stbi_image_free(img);
+        }
         return false;
     }
 

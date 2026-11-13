@@ -27,16 +27,39 @@ endif()
 
 add_subdirectory(vendor/CUI)
 
+# Optional PDF support via MuPDF (on by default).
+option(WITH_PDF "Enable PDF viewing support via MuPDF" ON)
+set(HAVE_MUPDF 0)
+if(WITH_PDF)
+    find_package(PkgConfig QUIET)
+    if(PkgConfig_FOUND)
+        pkg_check_modules(MUPDF QUIET mupdf)
+    endif()
+    if(MUPDF_FOUND)
+        set(HAVE_MUPDF 1)
+    else()
+        message(WARNING "MuPDF not found; building without PDF support")
+    endif()
+endif()
+
 add_executable(cuiviewer
     source-frontend/main.c
     src/settings.c
     src/thumbnails.c
+    src/pdf_viewer.c
 )
 target_include_directories(cuiviewer PRIVATE
     ${CMAKE_CURRENT_SOURCE_DIR}/include
     ${CMAKE_CURRENT_SOURCE_DIR}/vendor/CUI/third_party
+    ${MUPDF_INCLUDE_DIRS}
 )
-target_link_libraries(cuiviewer PRIVATE cui::cui)
+target_compile_definitions(cuiviewer PRIVATE
+    $<$<BOOL:${HAVE_MUPDF}>:HAVE_MUPDF=1>
+)
+target_link_libraries(cuiviewer PRIVATE cui::cui ${MUPDF_LIBRARIES})
+if(MUPDF_LIBRARY_DIRS)
+    target_link_directories(cuiviewer PRIVATE ${MUPDF_LIBRARY_DIRS})
+endif()
 
 if(UNIX AND NOT APPLE)
     target_link_libraries(cuiviewer PRIVATE m)

@@ -11,6 +11,7 @@ rm -rf "${BUILD_DIR}"
 cmake -S "${ROOT_DIR}" -B "${BUILD_DIR}" -G Ninja \
   -DCMAKE_BUILD_TYPE=Release \
   -DCUI_PLATFORM=win32 \
+  -DWITH_PDF=OFF \
   -DCMAKE_C_COMPILER="${CC}" \
   -DCMAKE_BUILD_WITH_INSTALL_RPATH=ON
 cmake --build "${BUILD_DIR}" --parallel 2

@@ -5,13 +5,14 @@ The frontend is C99 on top of the [CUI](https://github.com/yappologistic/CUI)
 framework; images are decoded with CUI's built-in stb_image integration (PNG
 and JPEG). No web views, instant startup, tiny memory footprint.
 
-Licensed under the GNU General Public License v3.0 (see `LICENSE`).
+Licensed under the GNU Affero General Public License v3.0 (see `LICENSE`), for 
+compatibility with MuPdf.
 
 This project has been developed with the help of AI (BeamFee model) using OpenCode.
 
 ## Features
 
-- File browser: lists the current directory, filters to PNG/JPEG, navigates
+- File browser: lists the current directory, filters to PNG/JPEG/PDF, navigates
   with the arrow keys; `Enter` opens a picture or enters a directory,
   `Backspace`/`Esc` goes to the parent directory.
 - Image viewer: opens a selected PNG/JPEG, displays it with `cui_image_viewer`,
