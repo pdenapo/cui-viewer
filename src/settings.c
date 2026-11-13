@@ -93,6 +93,42 @@ static int parse_bool(const char *json, const char *key, bool *out) {
     return 0;
 }
 
+static void parse_custom_commands(const char *json, app_settings *s) {
+    const char *p = find_key(json, "custom_commands");
+    if (!p || *p != '[') return;
+    p++;
+    while (*p) {
+        while (*p && (isspace((unsigned char)*p) || *p == ',')) p++;
+        if (*p == ']') break;
+        if (*p != '{') { p++; continue; }
+        int depth = 0;
+        const char *q = p;
+        for (; *q; q++) {
+            if (*q == '{') depth++;
+            else if (*q == '}') { depth--; if (depth == 0) break; }
+        }
+        if (!*q) break;
+        size_t len = (size_t)(q - p + 1);
+        char obj[2048];
+        if (len >= sizeof obj) len = sizeof obj - 1;
+        memcpy(obj, p, len);
+        obj[len] = '\0';
+
+        if (s->custom_command_count < MAX_CUSTOM_COMMANDS) {
+            custom_command *cc = &s->custom_commands[s->custom_command_count];
+            memset(cc, 0, sizeof *cc);
+            parse_string(obj, "name", cc->name, sizeof cc->name);
+            parse_string(obj, "command", cc->command, sizeof cc->command);
+            parse_string(obj, "shell", cc->shell, sizeof cc->shell);
+            parse_bool(obj, "terminal", &cc->terminal);
+            if (cc->name[0] && cc->command[0]) {
+                s->custom_command_count++;
+            }
+        }
+        p = q + 1;
+    }
+}
+
 void settings_defaults(app_settings *s) {
     if (!s) return;
     memset(s, 0, sizeof *s);
@@ -181,6 +217,8 @@ int settings_load(app_settings *s, const char *path) {
     parse_bool(buf, "slow_update", &s->thumbnails_slow_update);
     parse_bool(buf, "preview", &s->preview_enabled);
 
+    parse_custom_commands(buf, s);
+
     if (s->thumbnails_location[0] == '\0') {
         snprintf(s->thumbnails_location, sizeof s->thumbnails_location, "per-directory");
     }
@@ -245,7 +283,17 @@ int settings_save(const app_settings *s, const char *path) {
     fprintf(f, "    \"show_directories\": %s,\n", s->thumbnails_show_directories ? "true" : "false");
     fprintf(f, "    \"slow_update\": %s,\n", s->thumbnails_slow_update ? "true" : "false");
     fprintf(f, "    \"preview\": %s\n", s->preview_enabled ? "true" : "false");
-    fprintf(f, "  }\n");
+    fprintf(f, "  },\n");
+    fprintf(f, "  \"custom_commands\": [\n");
+    for (int i = 0; i < s->custom_command_count; i++) {
+        fprintf(f, "    { \"name\": \"%s\", \"command\": \"%s\", \"shell\": \"%s\", \"terminal\": %s }%s\n",
+                s->custom_commands[i].name,
+                s->custom_commands[i].command,
+                s->custom_commands[i].shell,
+                s->custom_commands[i].terminal ? "true" : "false",
+                (i + 1 < s->custom_command_count) ? "," : "");
+    }
+    fprintf(f, "  ]\n");
     fprintf(f, "}\n");
 
     fflush(f);

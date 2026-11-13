@@ -4,6 +4,15 @@
 #include <stdbool.h>
 #include <stddef.h>
 
+#define MAX_CUSTOM_COMMANDS 16
+
+typedef struct {
+    char name[64];
+    char command[512];
+    char shell[64];
+    bool terminal;
+} custom_command;
+
 typedef struct {
     int lang;
     bool dark;
@@ -29,6 +38,9 @@ typedef struct {
     bool thumbnails_show_directories;
     bool thumbnails_slow_update;
     bool preview_enabled;
+
+    int custom_command_count;
+    custom_command custom_commands[MAX_CUSTOM_COMMANDS];
 } app_settings;
 
 void settings_defaults(app_settings *s);

@@ -103,6 +103,9 @@ typedef struct {
     char thumbnails_location[16];
     bool preview_enabled;
 
+    int custom_command_count;
+    custom_command custom_commands[MAX_CUSTOM_COMMANDS];
+
     char settings_path[4096];
 } app_state;
 
@@ -124,6 +127,10 @@ static void save_settings(void) {
     st.thumbnails_size = 128;
     snprintf(st.thumbnails_location, sizeof st.thumbnails_location, "%s", S.thumbnails_location[0] ? S.thumbnails_location : "per-directory");
     st.preview_enabled = S.preview_enabled;
+    st.custom_command_count = S.custom_command_count;
+    for (int i = 0; i < S.custom_command_count && i < MAX_CUSTOM_COMMANDS; i++) {
+        st.custom_commands[i] = S.custom_commands[i];
+    }
     settings_save(&st, S.settings_path);
 }
 
@@ -145,6 +152,10 @@ static void load_settings_into_state(void) {
     S.slideshow.wrap = st.slideshow_wrap;
     snprintf(S.thumbnails_location, sizeof S.thumbnails_location, "%s", st.thumbnails_location[0] ? st.thumbnails_location : "per-directory");
     S.preview_enabled = st.preview_enabled;
+    S.custom_command_count = st.custom_command_count;
+    for (int i = 0; i < st.custom_command_count && i < MAX_CUSTOM_COMMANDS; i++) {
+        S.custom_commands[i] = st.custom_commands[i];
+    }
 }
 
 static bool is_image_path(const char *path) {
@@ -161,6 +172,39 @@ static bool is_image_path(const char *path) {
 }
 
 static void viewer_collect_siblings(const char *path);
+
+static void run_custom_command(cui_ctx *ui, const custom_command *cc, const char *path) {
+    if (!cc || !path || !path[0]) return;
+    char expanded[4096];
+    size_t ei = 0;
+    const char *p = cc->command;
+    while (*p && ei + 1 < sizeof expanded) {
+        if (p[0] == '%' && p[1] == 's') {
+            size_t pl = strlen(path);
+            if (ei + pl < sizeof expanded) {
+                memcpy(expanded + ei, path, pl);
+                ei += pl;
+            }
+            p += 2;
+        } else {
+            expanded[ei++] = *p++;
+        }
+    }
+    expanded[ei] = '\0';
+
+    const char *shell = cc->shell[0] ? cc->shell : "/bin/sh";
+    char full[8192];
+    if (cc->terminal) {
+        const char *term = getenv("TERMINAL");
+        if (!term || !term[0]) term = "x-terminal-emulator";
+        snprintf(full, sizeof full, "%s -e %s -c '%s' >/dev/null 2>&1 &", term, shell, expanded);
+    } else {
+        snprintf(full, sizeof full, "%s -c '%s' >/dev/null 2>&1 &", shell, expanded);
+    }
+    int rc = system(full);
+    if (rc == 0) cui_toast(ui, "Command launched", .tone = CUI_TONE_SUCCESS);
+    else cui_toast(ui, "Command failed", .tone = CUI_TONE_DANGER);
+}
 
 static void open_image(cui_ctx *ui, const char *path) {
     if (!path || !path[0]) return;
@@ -541,6 +585,11 @@ static void frame(cui_ctx *ui, void *user) {
                         S.show_delete_confirm = true;
                     }
                 }
+                for (int ci = 0; ci < S.custom_command_count; ci++) {
+                    if (cui_menu_item(ui, S.custom_commands[ci].name)) {
+                        run_custom_command(ui, &S.custom_commands[ci], S.viewer.path);
+                    }
+                }
             }
         }
         if (cui_icon_button(ui, CUI_ICON_SETTINGS, .tooltip = msg(T_SETTINGS))) S.show_settings = true;
@@ -603,6 +652,12 @@ static void frame(cui_ctx *ui, void *user) {
                             snprintf(S.move_path, sizeof S.move_path, "%s", sel);
                             S.move_dest[0] = '\0';
                             S.show_move = true;
+                        }
+                    }
+                    for (int ci = 0; ci < S.custom_command_count; ci++) {
+                        if (cui_menu_item(ui, S.custom_commands[ci].name)) {
+                            const char *sel = S.browser.selected_path[0] ? S.browser.selected_path : "";
+                            if (sel[0]) run_custom_command(ui, &S.custom_commands[ci], sel);
                         }
                     }
                     if (cui_menu_item(ui, "Slideshow here")) {
@@ -670,6 +725,12 @@ static void frame(cui_ctx *ui, void *user) {
                             if (sel[0]) {
                                 snprintf(S.delete_path, sizeof S.delete_path, "%s", sel);
                                 S.show_delete_confirm = true;
+                            }
+                        }
+                        for (int ci = 0; ci < S.custom_command_count; ci++) {
+                            if (cui_menu_item(ui, S.custom_commands[ci].name)) {
+                                const char *sel = S.browser.selected_path[0] ? S.browser.selected_path : "";
+                                if (sel[0]) run_custom_command(ui, &S.custom_commands[ci], sel);
                             }
                         }
                         if (cui_menu_item(ui, msg(T_RENAME))) {
@@ -863,6 +924,11 @@ static void frame(cui_ctx *ui, void *user) {
                     if (S.viewer.path[0]) {
                         snprintf(S.delete_path, sizeof S.delete_path, "%s", S.viewer.path);
                         S.show_delete_confirm = true;
+                    }
+                }
+                for (int ci = 0; ci < S.custom_command_count; ci++) {
+                    if (cui_menu_item(ui, S.custom_commands[ci].name)) {
+                        run_custom_command(ui, &S.custom_commands[ci], S.viewer.path);
                     }
                 }
             }

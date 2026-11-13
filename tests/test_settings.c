@@ -25,6 +25,11 @@ int main(void) {
     snprintf(s.last_directory, sizeof s.last_directory, "/tmp/pics");
     s.slideshow_interval_seconds = 3.5;
     s.thumbnails_size = 64;
+    s.custom_command_count = 1;
+    snprintf(s.custom_commands[0].name, sizeof s.custom_commands[0].name, "proc");
+    snprintf(s.custom_commands[0].command, sizeof s.custom_commands[0].command, "proc %s", "/tmp/f");
+    snprintf(s.custom_commands[0].shell, sizeof s.custom_commands[0].shell, "/bin/sh");
+    s.custom_commands[0].terminal = true;
     assert(settings_save(&s, tmp) == 0);
 
     app_settings s2;
@@ -35,6 +40,9 @@ int main(void) {
     assert(strcmp(s2.last_directory, "/tmp/pics") == 0);
     assert(s2.slideshow_interval_seconds == 3.5);
     assert(s2.thumbnails_size == 64);
+    assert(s2.custom_command_count == 1);
+    assert(strcmp(s2.custom_commands[0].name, "proc") == 0);
+    assert(s2.custom_commands[0].terminal == true);
 
     /* missing file keeps defaults */
     app_settings s3;

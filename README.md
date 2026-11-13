@@ -167,6 +167,32 @@ Settings are stored as JSON in the application data directory:
   `~/.local/share/cuiviewer/settings.json`
 - Windows: `%APPDATA%\cuiviewer\settings.json`
 
+## Custom commands
+
+Custom commands can be defined in `settings.json` under the `custom_commands` array.
+Each entry has the following fields:
+
+```json
+"custom_commands": [
+  {
+    "name": "Process file",
+    "command": "process_file %s",
+    "shell": "/bin/sh",
+    "terminal": true
+  }
+]
+```
+
+- `name`: label shown in the Actions menu.
+- `command`: shell command template. `%s` is replaced with the full path of the
+  selected file.
+- `shell`: shell used to execute the command (defaults to `/bin/sh`).
+- `terminal`: if true, the command is launched in a terminal emulator to show its
+  output.
+
+Commands appear in the Actions menu of the browser and the viewer, as well as in
+the right-click context menus.
+
 ## Cross-compilation and pre-flight verification
 
 When developing on Linux you can verify the Windows build without leaving the
