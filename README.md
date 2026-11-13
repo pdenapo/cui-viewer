@@ -7,6 +7,8 @@ and JPEG). No web views, instant startup, tiny memory footprint.
 
 Licensed under the GNU General Public License v3.0 (see `LICENSE`).
 
+This project has been developed with the help of AI (BeamFee model) using OpenCode.
+
 ## Features
 
 - File browser: lists the current directory, filters to PNG/JPEG, navigates
