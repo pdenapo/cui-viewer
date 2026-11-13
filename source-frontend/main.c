@@ -473,9 +473,9 @@ static void frame(cui_ctx *ui, void *user) {
         if (cui_shortcut(ui, 0, CUI_KEY_ESCAPE) || cui_shortcut(ui, 0, CUI_KEY_BACKSPACE))
             close_image(ui);
         if (S.viewer.pdf && pdf_viewer_is_open(S.viewer.pdf)) {
-            if (cui_shortcut(ui, 0, CUI_KEY_PAGE_DOWN))
+            if (cui_shortcut(ui, 0, CUI_KEY_PAGE_DOWN) || cui_shortcut(ui, 0, CUI_KEY_DOWN))
                 pdf_viewer_next(S.viewer.pdf, ui);
-            if (cui_shortcut(ui, 0, CUI_KEY_PAGE_UP))
+            if (cui_shortcut(ui, 0, CUI_KEY_PAGE_UP) || cui_shortcut(ui, 0, CUI_KEY_UP))
                 pdf_viewer_prev(S.viewer.pdf, ui);
         }
         if (!S.slideshow.active && S.slideshow.count > 1) {
@@ -705,6 +705,10 @@ static void frame(cui_ctx *ui, void *user) {
             cui_row(ui, .gap = 8, .align = CUI_ALIGN_CENTER) {
                 if (cui_button(ui, msg(T_BACK), .icon = CUI_ICON_ARROW_LEFT)) {
                     close_image(ui);
+                }
+                if (S.slideshow.count > 1) {
+                    if (cui_button(ui, "Prev File", .size = CUI_SIZE_SM)) slideshow_advance(ui, -1);
+                    if (cui_button(ui, "Next File", .size = CUI_SIZE_SM)) slideshow_advance(ui, 1);
                 }
                 if (!(S.viewer.pdf && pdf_viewer_is_open(S.viewer.pdf))) {
                     if (S.slideshow.count > 1) {
