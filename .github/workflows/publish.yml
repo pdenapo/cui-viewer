@@ -1,0 +1,113 @@
+name: Publish binaries
+
+on:
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: "Tag del release (ej. v0.1.3)"
+        required: false
+        default: "v0.1.0"
+  push:
+    tags: [ "v*" ]
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    name: build (${{ matrix.os }} / ${{ matrix.platform }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          # Linux
+          - { os: ubuntu-latest, platform: x11 }
+          - { os: ubuntu-latest, platform: glfw }
+          - { os: ubuntu-latest, platform: sdl2 }
+          # Windows (native win32)
+          - { os: windows-latest, platform: win32 }
+
+    steps:
+      - name: Checkout (with submodules)
+        uses: actions/checkout@v4
+        with:
+          submodules: recursive
+
+      - name: Install build dependencies (Linux)
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y cmake ninja-build gcc libglfw3-dev libsdl2-dev libx11-dev libgl-dev
+
+      - name: Install build dependencies (Windows)
+        if: runner.os == 'Windows'
+        run: |
+          choco install cmake ninja -y
+        shell: pwsh
+
+      - name: Configure
+        shell: bash
+        run: |
+          set -e
+          WORKSPACE="${GITHUB_WORKSPACE//\\//}"
+          CMAKE_ARGS=(-S "${WORKSPACE}" -B "${WORKSPACE}/build" -G Ninja -DCMAKE_BUILD_TYPE=Release -DCUI_PLATFORM="${{ matrix.platform }}")
+          cmake "${CMAKE_ARGS[@]}"
+
+      - name: Build
+        shell: bash
+        run: cmake --build "${GITHUB_WORKSPACE//\\//}/build" --parallel 2
+
+      - name: Upload artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: cuiviewer-${{ matrix.os }}-${{ matrix.platform }}
+          path: |
+            build/cuiviewer
+            build/cuiviewer.exe
+          retention-days: 14
+          if-no-files-found: warn
+
+  publish:
+    name: Publish binaries to release
+    needs: build
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - name: Download all artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+
+      - name: Package per-platform tarballs
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p dist
+          for d in artifacts/cuiviewer-*; do
+            [ -d "$d" ] || continue
+            name=$(basename "$d")
+            archive="cuiviewer-${name#cuiviewer-}.tar.gz"
+            tar -czf "dist/${archive}" -C "$d" .
+            echo "Created dist/${archive}"
+          done
+          ls -lh dist
+
+      - name: Determine release tag
+        id: tag
+        shell: bash
+        run: |
+          if [ -n "${{ github.event.inputs.tag }}" ]; then
+            echo "tag=${{ github.event.inputs.tag }}" >> "$GITHUB_OUTPUT"
+          else
+            echo "tag=${GITHUB_REF_NAME}" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Publish to release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ steps.tag.outputs.tag }}
+          files: dist/*
+          generate_release_notes: true
+          fail_on_unmatched_files: false
