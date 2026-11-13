@@ -1,0 +1,15 @@
+Source: cuiviewer
+Section: graphics
+Priority: optional
+Maintainer: cuiviewer contributors <cuiviewer@example.com>
+Build-Depends: debhelper-compat (= 13), cmake, ninja-build, gcc, libglfw3-dev, libgl-dev, libx11-dev, git
+Standards-Version: 4.6.2
+Homepage: https://github.com/pdenapo/cuiviewer
+Vcs-Git: https://github.com/pdenapo/cuiviewer.git
+
+Package: cuiviewer
+Architecture: any
+Depends: ${shlibs:Depends}, ${misc:Depends}, libglfw3, libgl1, libx11-6
+Description: Native image viewer (zgv-inspired)
+ Blazing-fast native image viewer built with CUI.
+ Includes the cuiviewer GUI application.

@@ -41,3 +41,18 @@ target_link_libraries(cuiviewer PRIVATE cui::cui)
 if(UNIX AND NOT APPLE)
     target_link_libraries(cuiviewer PRIVATE m)
 endif()
+
+install(TARGETS cuiviewer RUNTIME DESTINATION bin)
+
+if(EXISTS ${CMAKE_CURRENT_SOURCE_DIR}/tests/test_settings.c)
+    add_executable(cuiviewer_test
+        tests/test_settings.c
+        src/settings.c
+    )
+    target_include_directories(cuiviewer_test PRIVATE
+        ${CMAKE_CURRENT_SOURCE_DIR}/include
+    )
+    if(UNIX AND NOT APPLE)
+        target_link_libraries(cuiviewer_test PRIVATE m)
+    endif()
+endif()

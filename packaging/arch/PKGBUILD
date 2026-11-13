@@ -1,0 +1,40 @@
+# Maintainer: cuiviewer contributors
+pkgname=cuiviewer
+pkgver=0.1.0
+pkgrel=1
+pkgdesc="Native image viewer (zgv-inspired)"
+arch=('x86_64' 'aarch64')
+url="https://github.com/pdenapo/cuiviewer"
+license=('GPL-3.0-or-later')
+depends=('glibc' 'glfw' 'libglvnd' 'libx11')
+makedepends=('cmake' 'gcc' 'ninja' 'git')
+source=("$pkgname-$pkgver.tar.gz::https://github.com/pdenapo/cuiviewer/archive/v$pkgver.tar.gz")
+sha256sums=('SKIP')
+
+prepare() {
+    cd "$pkgname-$pkgver"
+    git submodule update --init --recursive || true
+}
+
+build() {
+    cd "$pkgname-$pkgver"
+    cmake -S . -B build -G Ninja \
+        -DCMAKE_BUILD_TYPE=Release \
+        -DCUI_PLATFORM=glfw \
+        -DCMAKE_INSTALL_PREFIX=/usr
+    cmake --build build --parallel
+}
+
+package() {
+    cd "$pkgname-$pkgver"
+    install -Dm755 build/cuiviewer "$pkgdir/usr/bin/cuiviewer"
+    install -Dm644 README.md "$pkgdir/usr/share/doc/$pkgname/README.md"
+    install -Dm644 /dev/stdin "$pkgdir/usr/share/applications/cuiviewer.desktop" <<EOF
+[Desktop Entry]
+Name=cuiviewer
+Comment=Native image viewer
+Exec=cuiviewer
+Type=Application
+Categories=Graphics;Viewer;
+EOF
+}

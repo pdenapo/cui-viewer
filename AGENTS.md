@@ -10,7 +10,7 @@ Build a lightweight, native image viewer for Linux (and other desktop platforms 
 - **Core philosophy:** zero bloatware, instant startup (< 10 ms), low memory footprint, zero web-view dependencies, pure native compilation.
 - **UI features:** light/dark theme and several languages (English, German, Spanish, French, Italian, Portuguese), switched in-app and persisted in the settings file. All documentation, code comments and identifier names are written in English.
 
-The old `zgv` source tree in `zgv-5.9/` is the behavioral reference for the browser/viewer flow. The `cui-http` project is the architectural and coding reference (C99 + CUI, settings restore, theme/language switching, build scripts).
+The classic `zgv` image viewer is the behavioral reference for the browser/viewer flow (external project; not included in this repository). The `cui-http` project is the architectural and coding reference (C99 + CUI, settings restore, theme/language switching, build scripts).
 
 ---
 

@@ -947,6 +947,21 @@ int main(int argc, char **argv) {
         /* runtime flag not fully wired */
     }
 
+#ifndef _WIN32
+    /* Some desktop sessions (e.g. MATE over SSH or a minimal environment)
+       do not export XDG_RUNTIME_DIR, which breaks Wayland/GLFW startup.
+       Provide a sane fallback so the application can start. */
+    {
+        const char *xdg = getenv("XDG_RUNTIME_DIR");
+        if (!xdg || !xdg[0] || access(xdg, R_OK | W_OK | X_OK) != 0) {
+            char fallback[256];
+            snprintf(fallback, sizeof fallback, "/tmp/xdg-runtime-%d", (int)getuid());
+            mkdir(fallback, 0700);
+            setenv("XDG_RUNTIME_DIR", fallback, 1);
+        }
+    }
+#endif
+
     cui_app *app = cui_app_create(&(cui_app_desc){
         .title = "cuiviewer",
         .width = 1280,
