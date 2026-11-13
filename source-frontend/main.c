@@ -507,8 +507,8 @@ static void frame(cui_ctx *ui, void *user) {
             }
         }
 
-        cui_menu(ui, "Window", .icon = CUI_ICON_MAXIMIZE_2) {
-            if (cui_menu_item(ui, "Start maximized", .checked = S.window_maximized)) {
+        cui_menu(ui, msg(T_WINDOW), .icon = CUI_ICON_MAXIMIZE_2) {
+            if (cui_menu_item(ui, msg(T_START_MAXIMIZED), .checked = S.window_maximized)) {
                 S.window_maximized = !S.window_maximized;
                 save_settings();
             }
@@ -543,8 +543,8 @@ static void frame(cui_ctx *ui, void *user) {
                 }
             }
         }
-        if (cui_icon_button(ui, CUI_ICON_SETTINGS, .tooltip = "Settings")) S.show_settings = true;
-        if (cui_icon_button(ui, CUI_ICON_CIRCLE_HELP, .tooltip = "Help")) S.show_help = true;
+        if (cui_icon_button(ui, CUI_ICON_SETTINGS, .tooltip = msg(T_SETTINGS))) S.show_settings = true;
+        if (cui_icon_button(ui, CUI_ICON_CIRCLE_HELP, .tooltip = msg(T_HELP))) S.show_help = true;
         if (cui_icon_button(ui, S.dark ? CUI_ICON_SUN : CUI_ICON_MOON, .tooltip = msg(T_THEME))) {
             S.dark = !S.dark;
             cui_set_theme(ui, S.dark ? CUI_THEME_DARK : CUI_THEME_LIGHT);
@@ -557,9 +557,9 @@ static void frame(cui_ctx *ui, void *user) {
         cui_column(ui, .width = CUI_FILL, .height = CUI_FILL, .gap = 8) {
             cui_row(ui, .gap = 8, .align = CUI_ALIGN_CENTER) {
                 cui_box(ui, .width = CUI_FILL) {
-                    cui_search(ui, "file_search", S.file_search, sizeof S.file_search, .placeholder = "Search files...");
+                    cui_search(ui, "file_search", S.file_search, sizeof S.file_search, .placeholder = msg(T_SEARCH));
                 }
-                cui_menu(ui, "Sort", .icon = CUI_ICON_ARROW_DOWN) {
+                cui_menu(ui, msg(T_SORT), .icon = CUI_ICON_ARROW_DOWN) {
                     if (cui_menu_item(ui, "Name", .checked = S.file_sort == 0)) S.file_sort = 0;
                     if (cui_menu_item(ui, "Date modified", .checked = S.file_sort == 1)) S.file_sort = 1;
                 }
@@ -870,7 +870,7 @@ static void frame(cui_ctx *ui, void *user) {
     }
 
     /* Built-in help dialog. */
-    cui_dialog(ui, "Help", &S.show_help, .width = 520) {
+    cui_dialog(ui, msg(T_HELP), &S.show_help, .width = 520) {
         cui_text(ui, "Keyboard shortcuts", .font = CUI_FONT_MEDIUM, .size = 16);
         cui_separator(ui);
         const char *help_lines[] = {
@@ -889,7 +889,7 @@ static void frame(cui_ctx *ui, void *user) {
     }
 
     /* Settings dialog. */
-    cui_dialog(ui, "Settings", &S.show_settings, .width = 460) {
+    cui_dialog(ui, msg(T_SETTINGS), &S.show_settings, .width = 460) {
         cui_text(ui, "Language", .font = CUI_FONT_MEDIUM, .size = 14);
         cui_row(ui, .gap = 6) {
             const char *codes[] = { "en","de","es","fr","it","pt" };
@@ -904,7 +904,7 @@ static void frame(cui_ctx *ui, void *user) {
         }
         cui_separator(ui);
         cui_row(ui, .gap = 8, .align = CUI_ALIGN_CENTER) {
-            cui_text(ui, "Theme", .size = 13);
+            cui_text(ui, msg(T_THEME), .size = 13);
             if (cui_button(ui, S.dark ? "Dark" : "Light", .size = CUI_SIZE_SM)) {
                 S.dark = !S.dark;
                 cui_set_theme(ui, S.dark ? CUI_THEME_DARK : CUI_THEME_LIGHT);
@@ -916,11 +916,11 @@ static void frame(cui_ctx *ui, void *user) {
             if (cui_checkbox(ui, "maximized", &S.window_maximized)) save_settings();
         }
         cui_row(ui, .gap = 8, .align = CUI_ALIGN_CENTER) {
-            cui_text(ui, "Checkerboard", .size = 13);
+            cui_text(ui, msg(T_CHECKERBOARD), .size = 13);
             if (cui_checkbox(ui, "checkerboard", &S.viewer.checkerboard)) save_settings();
         }
         cui_row(ui, .gap = 8, .align = CUI_ALIGN_CENTER) {
-            cui_text(ui, "Show preview", .size = 13);
+            cui_text(ui, msg(T_SHOW_PREVIEW), .size = 13);
             if (cui_checkbox(ui, "preview", &S.preview_enabled)) save_settings();
         }
         cui_row(ui, .gap = 8, .align = CUI_ALIGN_CENTER) {

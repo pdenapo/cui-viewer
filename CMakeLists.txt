@@ -1,5 +1,8 @@
 cmake_minimum_required(VERSION 3.14)
 project(cuiviewer C)
+
+include(CTest)
+enable_testing()
 set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 set(CMAKE_C_STANDARD 99)
 set(CMAKE_C_STANDARD_REQUIRED ON)
@@ -75,14 +78,51 @@ endif()
 install(TARGETS cuiviewer RUNTIME DESTINATION bin)
 
 if(EXISTS ${CMAKE_CURRENT_SOURCE_DIR}/tests/test_settings.c)
-    add_executable(cuiviewer_test
+    add_executable(cuiviewer_test_settings
         tests/test_settings.c
         src/settings.c
     )
-    target_include_directories(cuiviewer_test PRIVATE
+    target_include_directories(cuiviewer_test_settings PRIVATE
         ${CMAKE_CURRENT_SOURCE_DIR}/include
     )
     if(UNIX AND NOT APPLE)
-        target_link_libraries(cuiviewer_test PRIVATE m)
+        target_link_libraries(cuiviewer_test_settings PRIVATE m)
     endif()
+    add_test(NAME settings COMMAND cuiviewer_test_settings)
 endif()
+
+if(EXISTS ${CMAKE_CURRENT_SOURCE_DIR}/tests/test_i18n.c)
+    add_executable(cuiviewer_test_i18n
+        tests/test_i18n.c
+        src/i18n.c
+        src/lang/en.c
+        src/lang/de.c
+        src/lang/es.c
+        src/lang/fr.c
+        src/lang/it.c
+        src/lang/pt.c
+    )
+    target_include_directories(cuiviewer_test_i18n PRIVATE
+        ${CMAKE_CURRENT_SOURCE_DIR}/include
+    )
+    add_test(NAME i18n COMMAND cuiviewer_test_i18n)
+endif()
+
+if(EXISTS ${CMAKE_CURRENT_SOURCE_DIR}/tests/test_thumbnails.c)
+    add_executable(cuiviewer_test_thumbnails
+        tests/test_thumbnails.c
+        src/thumbnails.c
+    )
+    target_include_directories(cuiviewer_test_thumbnails PRIVATE
+        ${CMAKE_CURRENT_SOURCE_DIR}/include
+        ${CMAKE_CURRENT_SOURCE_DIR}/vendor/CUI/third_party
+    )
+    if(UNIX AND NOT APPLE)
+        target_link_libraries(cuiviewer_test_thumbnails PRIVATE m)
+    endif()
+    add_test(NAME thumbnails COMMAND cuiviewer_test_thumbnails)
+endif()
+
+# Smoke tests for CLI
+add_test(NAME cli_help COMMAND cuiviewer --help)
+add_test(NAME cli_version COMMAND cuiviewer --version)
