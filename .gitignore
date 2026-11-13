@@ -1,0 +1,5 @@
+build*/
+*.o
+*.a
+settings.json
+.DS_Store
