@@ -4,8 +4,6 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
-#include <sys/stat.h>
-#include <unistd.h>
 
 int main(void) {
     char *p = settings_default_path();
@@ -13,10 +11,8 @@ int main(void) {
     assert(strstr(p, "settings.json") != NULL);
     free(p);
 
-    char tmp[] = "/tmp/opencode/test_settings.json";
-    /* ensure dir */
-    char dir[] = "/tmp/opencode";
-    mkdir(dir, 0755);
+    /* Relative path keeps the test portable (no POSIX mkdir needed). */
+    char tmp[] = "cuiviewer_test_settings.json";
 
     app_settings s;
     settings_defaults(&s);
@@ -47,7 +43,8 @@ int main(void) {
     /* missing file keeps defaults */
     app_settings s3;
     settings_defaults(&s3);
-    assert(settings_load(&s3, "/tmp/opencode/nope.json") == 0);
+    remove("cuiviewer_test_missing.json");
+    assert(settings_load(&s3, "cuiviewer_test_missing.json") == 0);
     assert(s3.lang == 0);
 
     remove(tmp);
