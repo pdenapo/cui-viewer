@@ -10,7 +10,9 @@ those parts.
 | Inter / Geist / Geist Mono fonts | embedded in CUI | SIL Open Font License 1.1 |
 | Lucide icons | embedded in CUI | ISC |
 | Unicode data | embedded in CUI | Unicode License V3 |
+| MuPDF | optional system library for PDF support (`WITH_PDF`, linked via pkg-config) | GNU Affero General Public License v3.0 or commercial license (Artifex), https://mupdf.com/ |
 
-The `zgv` project is referenced only as a behavioral inspiration for the
-browser/viewer flow and the thumbnail cache layout; no zgv code is included
-or compiled into cuiviewer.
+MuPDF is not vendored: it is an optional dependency detected at build time and
+PDF support is disabled when it is not available. The `zgv` project is
+referenced only as a behavioral inspiration for the browser/viewer flow and the
+thumbnail cache layout; no zgv code is included or compiled into cuiviewer.

@@ -6,7 +6,7 @@ framework; images are decoded with CUI's built-in stb_image integration (PNG
 and JPEG). No web views, instant startup, tiny memory footprint.
 
 Licensed under the GNU Affero General Public License v3.0 (see `LICENSE`), for 
-compatibility with MuPdf.
+compatibility with MuPDF.
 
 This project has been developed with the help of AI (BeamFee model) using OpenCode.
 
@@ -67,21 +67,30 @@ git clone --recurse-submodules https://github.com/pdenapo/cuiviewer.git
 
 ### Linux (Arch)
 ```sh
-sudo pacman -S base-devel cmake ninja glfw libglvnd libx11 libmupdf-dev 
+sudo pacman -S base-devel cmake ninja glfw libglvnd libx11 libmupdf
 ```
 ### Linux (Debian / Ubuntu)
 ```sh
 sudo apt-get install -y build-essential cmake ninja-build libglfw3-dev libgl-dev libx11-dev libmupdf-dev 
 ```
+PDF support is enabled automatically when MuPDF is found through pkg-config.
+
 ### macOS
 ```sh
 brew install cmake ninja
 ```
-Xcode Command Line Tools are required for the compiler.
+Xcode Command Line Tools are required for the compiler. PDF support is
+optional and needs a MuPDF pkg-config file (`mupdf.pc`). Homebrew's `mupdf`
+formula does not install one, so PDF support is disabled on macOS unless you
+provide `mupdf.pc` yourself.
 
 ### Windows
 - CMake + Ninja (`choco install cmake ninja`)
 - Visual Studio Build Tools (MSVC) or MinGW
+- PDF support (optional) requires MuPDF and pkg-config, for example
+  `pacman -S mingw-w64-ucrt-x86_64-libmupdf mingw-w64-ucrt-x86_64-pkgconf`
+  under MSYS2/MinGW. When they are missing the build succeeds with PDF
+  support disabled.
 
 ## Build
 
@@ -120,6 +129,9 @@ Manual equivalent:
 cmake -S . -B build -DCMAKE_BUILD_TYPE=Release -DCUI_PLATFORM=glfw
 cmake --build build -j 2
 ```
+
+MuPDF (PDF support) is optional and enabled by default when found via
+pkg-config. Add `-DWITH_PDF=OFF` to build without it.
 
 Standard workflow (X11 example):
 
@@ -233,7 +245,7 @@ Packaging files for Debian, RPM and Arch are under `packaging/`. See
 ## License
 
 cuiviewer is licensed under the GNU Affero General Public License v3.0 (see
-`LICENSE`), for compatibility with MuPad. Third-party components are listed in `THIRD_PARTY.md`.
+`LICENSE`), for compatibility with MuPDF. Third-party components are listed in `THIRD_PARTY.md`.
 The `zgv` project is referenced only as a behavioral inspiration for the
 browser/viewer flow and the thumbnail cache layout; no zgv code is included
 or compiled into cuiviewer.

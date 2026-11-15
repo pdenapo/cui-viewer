@@ -2,7 +2,7 @@ Source: cuiviewer
 Section: graphics
 Priority: optional
 Maintainer: cuiviewer contributors <cuiviewer@example.com>
-Build-Depends: debhelper-compat (= 13), cmake, ninja-build, gcc, libglfw3-dev, libgl-dev, libx11-dev, git
+Build-Depends: debhelper-compat (= 13), cmake, ninja-build, gcc, pkg-config, libglfw3-dev, libgl-dev, libx11-dev, libmupdf-dev, git
 Standards-Version: 4.6.2
 Homepage: https://github.com/pdenapo/cuiviewer
 Vcs-Git: https://github.com/pdenapo/cuiviewer.git

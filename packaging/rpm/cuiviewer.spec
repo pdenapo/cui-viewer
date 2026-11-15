@@ -3,12 +3,12 @@ Version:        0.1.0
 Release:        1%{?dist}
 Summary:        Native image viewer (zgv-inspired)
 
-License:        GPL-3.0-or-later
+License:        AGPL-3.0-only
 URL:            https://github.com/pdenapo/cuiviewer
 Source0:        https://github.com/pdenapo/cuiviewer/releases/download/v%{version}/cuiviewer-%{version}.tar.gz
 
-BuildRequires:  cmake, ninja-build, gcc, glfw-devel, mesa-libGL-devel, libX11-devel
-Requires:       glfw, mesa-libGL, libX11
+BuildRequires:  cmake, ninja-build, gcc, pkgconf, glfw-devel, mesa-libGL-devel, libX11-devel, mupdf-devel
+Requires:       glfw, mesa-libGL, libX11, mupdf-libs
 
 %description
 Blazing-fast native image viewer built with CUI.
