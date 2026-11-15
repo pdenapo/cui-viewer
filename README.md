@@ -15,7 +15,7 @@ This project has been developed with the help of AI (BeamFee model) using OpenCo
 - File browser: lists the current directory, filters to PNG/JPEG/PDF, navigates
   with the arrow keys; `Enter` opens a picture or enters a directory,
   `Backspace`/`Esc` goes to the parent directory.
-- Image viewer: opens a selected PNG/JPEG, displays it with `cui_image_viewer`,
+- Image viewer: opens a selected PNG/JPEG/PDF, displays it with `cui_image_viewer`,
   supports zoom in/out, fit, 100%, pan and keyboard shortcuts.
 - Slideshow: view all supported images in the current directory (optionally
   recursively), in directory or random order, advancing after a configurable
@@ -67,11 +67,11 @@ git clone --recurse-submodules https://github.com/pdenapo/cuiviewer.git
 
 ### Linux (Arch)
 ```sh
-sudo pacman -S base-devel cmake ninja glfw libglvnd libx11
+sudo pacman -S base-devel cmake ninja glfw libglvnd libx11 libmupdf-dev 
 ```
 ### Linux (Debian / Ubuntu)
 ```sh
-sudo apt-get install -y build-essential cmake ninja-build libglfw3-dev libgl-dev libx11-dev
+sudo apt-get install -y build-essential cmake ninja-build libglfw3-dev libgl-dev libx11-dev libmupdf-dev 
 ```
 ### macOS
 ```sh
@@ -232,8 +232,8 @@ Packaging files for Debian, RPM and Arch are under `packaging/`. See
 
 ## License
 
-cuiviewer is licensed under the GNU General Public License v3.0 (see
-`LICENSE`). Third-party components are listed in `THIRD_PARTY.md`.
+cuiviewer is licensed under the GNU Affero General Public License v3.0 (see
+`LICENSE`), for compatibility with MuPad. Third-party components are listed in `THIRD_PARTY.md`.
 The `zgv` project is referenced only as a behavioral inspiration for the
 browser/viewer flow and the thumbnail cache layout; no zgv code is included
 or compiled into cuiviewer.
